@@ -96,6 +96,7 @@ services:
       NEXTCLOUD_OIDC_CLIENT_SECRET: ${NEXTCLOUD_OIDC_CLIENT_SECRET:-sk-nextcloud-oidc-client-secret-key}
       XWIKI_OIDC_CLIENT_SECRET: ${XWIKI_OIDC_CLIENT_SECRET:-sk-xwiki-oidc-client-secret-key}
       LANGFUSE_OIDC_CLIENT_SECRET: ${LANGFUSE_OIDC_CLIENT_SECRET:-sk-langfuse-oidc-client-secret-key}
+      CLOUDFLARE_OS_OIDC_CLIENT_SECRET: ${CLOUDFLARE_OS_OIDC_CLIENT_SECRET:-sk-cloudflare-os-oidc-client-secret-key}
       KANEO_OIDC_CLIENT_SECRET: ${KANEO_OIDC_CLIENT_SECRET:-sk-kaneo-oidc-client-secret-key}
       ZULIP_OIDC_CLIENT_SECRET: ${ZULIP_OIDC_CLIENT_SECRET:-sk-zulip-oidc-client-secret-key}
       GITLAB_OIDC_CLIENT_SECRET: ${GITLAB_OIDC_CLIENT_SECRET:-sk-gitlab-oidc-client-secret-key}

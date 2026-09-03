@@ -1,5 +1,847 @@
+diff --git a/packages/gatekeeper-keycloak/__tests__/oauth.test.ts b/packages/gatekeeper-keycloak/__tests__/oauth.test.ts
+new file mode 100644
+index 0000000..726dc39
+--- /dev/null
++++ b/packages/gatekeeper-keycloak/__tests__/oauth.test.ts
+@@ -0,0 +1,90 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++import {
++  buildAuthorizeUrl,
++  exchangeCodeForVerifiedEmail,
++  generatePkce,
++  getOAuthConfig,
++  type KeycloakOAuthConfig,
++} from "../src/oauth.js";
++
++/**
++ * test間で差し替えたglobalを元へ戻す。
++ *
++ * @returns 戻し処理完了後にvoid。
++ */
++afterEach((): void => {
++  vi.restoreAllMocks();
++  vi.unstubAllGlobals();
++});
++
++describe("Keycloak OAuth", () => {
++  /**
++   * 公開issuerと内部issuerを用途別に設定できることを確認する。
++   *
++   * @returns test完了後にvoid。
++   */
++  it("公開URLを認可に使い内部URLをtoken交換に使う", (): void => {
++    const config = getOAuthConfig({
++      BASE_URL: "http://192.168.1.100:32500/gatekeeper/keycloak/",
++      CLIENT_ID: "cloudflare-os",
++      CLIENT_SECRET: "secret",
++      ISSUER_URL: "http://192.168.1.100:30001/realms/prod/",
++      INTERNAL_ISSUER_URL: "http://keycloak:8080/realms/prod/",
++    });
++    expect(config).toMatchObject({
++      issuerUrl: "http://192.168.1.100:30001/realms/prod",
++      internalIssuerUrl: "http://keycloak:8080/realms/prod",
++      redirectUri: "http://192.168.1.100:32500/gatekeeper/keycloak/oauth",
++    });
++  });
++
++  /**
++   * 認可URLがAuthorization Code、email scope、PKCEを必須にすることを確認する。
++   *
++   * @returns test完了後にvoid。
++   */
++  it("PKCE付きAuthorization Code URLを生成する", (): void => {
++    const config: KeycloakOAuthConfig = {
++      clientId: "cloudflare-os",
++      clientSecret: "secret",
++      issuerUrl: "https://sso.example.test/realms/prod",
++      internalIssuerUrl: "http://keycloak:8080/realms/prod",
++      redirectUri: "https://os.example.test/gatekeeper/keycloak/oauth",
++    };
++    const url = new URL(buildAuthorizeUrl(config, "state", "challenge"));
++    expect(url.origin).toBe("https://sso.example.test");
++    expect(url.searchParams.get("response_type")).toBe("code");
++    expect(url.searchParams.get("scope")).toBe("openid email profile");
++    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
++  });
++
++  /**
++   * PKCE verifierとchallengeが十分なentropyと正しいdigestを持つことを確認する。
++   *
++   * @returns test完了時に解決するPromise。
++   */
++  it("S256 PKCE pairを生成する", async (): Promise<void> => {
++    const pair = await generatePkce();
++    expect(pair.verifier).toMatch(/^[\w-]{43}$/);
++    expect(pair.challenge).toMatch(/^[\w-]{43}$/);
++    expect(pair.challenge).not.toBe(pair.verifier);
++  });
++
++  /**
++   * token endpoint失敗時にidentityを受理しないことを確認する。
++   *
++   * @returns test完了時に解決するPromise。
++   */
++  it("token交換失敗を拒否する", async (): Promise<void> => {
++    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("denied", {status: 401})));
++    const config: KeycloakOAuthConfig = {
++      clientId: "cloudflare-os",
++      clientSecret: "secret",
++      issuerUrl: "https://sso.example.test/realms/prod",
++      internalIssuerUrl: "https://sso-internal.example.test/realms/prod",
++      redirectUri: "https://os.example.test/gatekeeper/keycloak/oauth",
++    };
++    await expect(exchangeCodeForVerifiedEmail(config, "code", "verifier"))
++        .resolves.toBeNull();
++  });
++});
+diff --git a/packages/gatekeeper-keycloak/package.json b/packages/gatekeeper-keycloak/package.json
+new file mode 100644
+index 0000000..2a4af94
+--- /dev/null
++++ b/packages/gatekeeper-keycloak/package.json
+@@ -0,0 +1,23 @@
++{
++  "name": "@gadgets/keycloak-gatekeeper",
++  "version": "1.0.0",
++  "type": "module",
++  "main": "./src/keycloak.ts",
++  "scripts": {
++    "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
++    "deploy": "wrangler deploy",
++    "test:run": "vitest run"
++  },
++  "dependencies": {
++    "@gadgets/workshop-shared": "workspace:*",
++    "capnweb-validate": "catalog:",
++    "jose": "^6.2.8"
++  },
++  "devDependencies": {
++    "@cloudflare/workers-types": "^5.20260825.1",
++    "@gadgets/scripts": "workspace:*",
++    "typescript": "catalog:",
++    "vitest": "catalog:",
++    "wrangler": "catalog:"
++  }
++}
+diff --git a/packages/gatekeeper-keycloak/src/keycloak.ts b/packages/gatekeeper-keycloak/src/keycloak.ts
+new file mode 100644
+index 0000000..4568129
+--- /dev/null
++++ b/packages/gatekeeper-keycloak/src/keycloak.ts
+@@ -0,0 +1,430 @@
++import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
++import { skipRpcValidation, validateRpc } from "capnweb-validate";
++import {
++  type AccountDescription,
++  type Gatekeeper,
++  type GatekeeperConnectCallback,
++  type GatekeeperConnectOptions,
++  type GatekeeperUser,
++  type GatekeeperUserVerifier,
++  type GatekeeperVendor as GatekeeperVendorInterface,
++  type ResourceConfiguratorFrame,
++  type SupportedResource,
++  type VendorDescription,
++} from "@gadgets/workshop-shared/gatekeeper";
++import {
++  buildAuthorizeUrl,
++  exchangeCodeForVerifiedEmail,
++  generatePkce,
++  getBasePath,
++  getBaseUrl,
++  getOAuthConfig,
++  type KeycloakOAuthEnv,
++} from "./oauth.js";
++
++const NONCE_BYTES = 32;
++const NONCE_LIFETIME_MS = 10 * 60 * 1000;
++const TRANSIENT_ACCOUNT_LIFETIME_MS = 2 * 60 * 1000;
++const STATE_PATTERN = /^([0-9a-f]{64}):([0-9a-f]{64})$/i;
++const KEYCLOAK_LOGO = "data:image/svg+xml," + encodeURIComponent(
++    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
++    '<circle cx="32" cy="32" r="30" fill="#4d4d4d"/>' +
++    '<path fill="#fff" d="M18 29h28v20H18zm5 5v10h18V34z"/>' +
++    '<path fill="#ef4444" d="M27 15h10v17H27z"/>' +
++    '<circle cx="32" cy="19" r="3" fill="#fff"/></svg>');
++
++type StoredNonce = {
++  value: string;
++  expiresAt: number;
++  stage: "initiation" | "oauth";
++  verifier?: string;
++};
++
++type GatekeeperUserProps = {userObjectId: string};
++type Env = Cloudflare.Env & KeycloakOAuthEnv;
++
++const SELF_CLOSING_HTML = `<!doctype html><html lang="ja"><body>
++<script>window.close()</script><p>認証が完了しました。このtabを閉じてCloudflare OSへ戻ってください。</p>
++</body></html>`;
++
++const INVALID_LINK_HTML = `<!doctype html><html lang="ja"><body>
++<h1>認証linkが無効です</h1><p>Cloudflare OSへ戻り、もう一度実行してください。</p>
++</body></html>`;
++
++/**
++ * 暗号学的乱数から推測困難なhex nonceを生成する。
++ *
++ * @returns 64桁のhex nonce。
++ */
++function generateNonce(): string {
++  return [...crypto.getRandomValues(new Uint8Array(NONCE_BYTES))]
++      .map((byte) => byte.toString(16).padStart(2, "0")).join("");
++}
++
++/**
++ * 長さを含めて秘密値をtiming-safeに比較する。
++ *
++ * @param left 比較する一方の文字列。
++ * @param right 比較するもう一方の文字列。
++ * @returns byte列が完全に一致する場合はtrue。
++ */
++async function constantTimeEqual(left: string, right: string): Promise<boolean> {
++  const encoder = new TextEncoder();
++  const leftBytes = encoder.encode(left);
++  const rightBytes = encoder.encode(right);
++  if (leftBytes.byteLength !== rightBytes.byteLength) return false;
++  return crypto.subtle.timingSafeEqual(leftBytes, rightBytes);
++}
++
++/** Keycloak OAuthの開始とcallbackだけを処理するHTTP entrypoint。 */
++export default {
++  /**
++   * Gatekeeperの認証開始URLとOIDC callbackを処理する。
++   *
++   * @param request browserから届いたHTTP request。
++   * @param env Workerへ渡された環境変数。
++   * @param context Worker execution context。
++   * @returns redirect、完了画面、またはerror response。
++   */
++  async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
++    const url = new URL(request.url);
++    const basePath = getBasePath(env);
++    if (!url.pathname.startsWith(`${basePath}/`) && url.pathname !== basePath) {
++      return new Response("Not Found", {status: 404});
++    }
++    const relativePath = url.pathname.slice(basePath.length);
++    const path = relativePath.slice(1).split("/");
++
++    if (path.length === 2 && /^[0-9a-f]{64}$/i.test(path[0] || "") &&
++        /^[0-9a-f]{64}$/i.test(path[1] || "")) {
++      const config = getOAuthConfig(env);
++      if (!config) return new Response("Keycloak Gatekeeper is not configured", {status: 503});
++      const account = context.exports.UserAccount.get(
++          context.exports.UserAccount.idFromString(path[0]!));
++      const begun = await account.beginOAuthFlow(path[1]!);
++      if (!begun) {
++        return new Response(INVALID_LINK_HTML, {
++          status: 400,
++          headers: {"Content-Type": "text/html; charset=utf-8"},
++        });
++      }
++      return Response.redirect(
++          buildAuthorizeUrl(config, `${path[0]}:${begun.oauthNonce}`, begun.challenge), 302);
++    }
++
++    if (relativePath === "/oauth") {
++      const state = url.searchParams.get("state");
++      const code = url.searchParams.get("code");
++      const match = state ? STATE_PATTERN.exec(state) : null;
++      if (!match?.[1] || !match[2] || !code) {
++        return new Response(INVALID_LINK_HTML, {
++          status: 400,
++          headers: {"Content-Type": "text/html; charset=utf-8"},
++        });
++      }
++      const account = context.exports.UserAccount.get(
++          context.exports.UserAccount.idFromString(match[1]));
++      if (!await account.acceptAuthCode(code, match[2])) {
++        return new Response(INVALID_LINK_HTML, {
++          status: 400,
++          headers: {"Content-Type": "text/html; charset=utf-8"},
++        });
++      }
++      return new Response(SELF_CLOSING_HTML, {
++        headers: {"Content-Type": "text/html; charset=utf-8"},
++      });
++    }
++
++    return new Response("Not Found", {status: 404});
++  },
++};
++
++/** KeycloakをCloudflare OSのlogin providerとして公開するRPC entrypoint。 */
++@validateRpc()
++export class GatekeeperVendor extends WorkerEntrypoint<Env>
++    implements GatekeeperVendorInterface {
++  /**
++   * Login画面に表示するKeycloak provider情報を返す。
++   *
++   * @returns 認証providerの表示情報。
++   */
++  async describe(): Promise<VendorDescription> {
++    return {
++      displayName: "Keycloak",
++      url: this.env.ISSUER_URL || "https://www.keycloak.org",
++      logo: {url: KEYCLOAK_LOGO},
++      color: "#ededed",
++      tagline: "組織accountでCloudflare OSへsign in",
++      description: "Keycloakが検証したemail addressでCloudflare OSへsign inします。",
++      providesAuth: true,
++    };
++  }
++
++  /**
++   * 一回限りの認証sessionを作り、browserで開く開始URLを返す。
++   *
++   * @param callback 認証完了をCloudflare OSへ通知するRPC callback。
++   * @param options 呼出元が指定した接続目的。認証専用のためresource scopeは使用しない。
++   * @returns browserで開くGatekeeper URL。
++   */
++  async connectAccount(
++      callback: Fetcher<GatekeeperConnectCallback>,
++      options?: GatekeeperConnectOptions): Promise<{url: string}> {
++    if (options?.scopes && options.scopes !== "auth") {
++      throw new Error("Keycloak Gatekeeperはsign-in専用です。");
++    }
++    const id = this.ctx.exports.UserAccount.newUniqueId();
++    const nonce = generateNonce();
++    await this.ctx.exports.UserAccount.get(id).setCallback(callback, nonce);
++    return {url: `${getBaseUrl(this.env)}/${id.toString()}/${nonce}`};
++  }
++
++  /**
++   * 認証専用GatekeeperをConnector一覧から隠すため空のresource一覧を返す。
++   *
++   * @returns 常に空のresource一覧。
++   */
++  async getSupportedResources(): Promise<SupportedResource[]> {
++    return [];
++  }
++
++  /**
++   * 認証専用Gatekeeperにはagent APIがないため空の型定義を返す。
++   *
++   * @returns 空文字列。
++   */
++  async getTypeScriptTypes(): Promise<string> {
++    return "";
++  }
++}
++
++/** 一回限りのOIDC stateと検証済みemailを保持するDurable Object。 */
++export class UserAccount extends DurableObject<Env> {
++  /**
++   * 環境変数からOAuth設定を取得する。
++   *
++   * @returns 完全なOAuth設定。
++   * @throws 必須設定が不足している場合に例外を送出する。
++   */
++  #config() {
++    const config = getOAuthConfig(this.env);
++    if (!config) throw new Error("Keycloak Gatekeeper is not configured");
++    return config;
++  }
++
++  /**
++   * Cloudflare OS callbackと認証開始nonceを一時保存する。
++   *
++   * @param callback 認証完了を通知するRPC callback。
++   * @param nonce 認証開始URLへ埋め込む一回限りのnonce。
++   * @returns 完了時に解決するPromise。
++   */
++  async setCallback(callback: Fetcher<GatekeeperConnectCallback>, nonce: string): Promise<void> {
++    this.ctx.storage.kv.put("callback", callback);
++    this.ctx.storage.kv.put<StoredNonce>("nonce", {
++      value: nonce,
++      expiresAt: Date.now() + NONCE_LIFETIME_MS,
++      stage: "initiation",
++    });
++    await this.ctx.storage.setAlarm(Date.now() + NONCE_LIFETIME_MS);
++  }
++
++  /**
++   * 認証開始nonceを消費し、OAuth stateとPKCE pairを発行する。
++   *
++   * @param initiationNonce 開始URLから受け取ったnonce。
++   * @returns 有効な場合はOAuth nonceとPKCE challenge、無効な場合はnull。
++   */
++  async beginOAuthFlow(
++      initiationNonce: string): Promise<{oauthNonce: string; challenge: string} | null> {
++    const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
++    if (!stored || stored.stage !== "initiation" || Date.now() >= stored.expiresAt ||
++        !await constantTimeEqual(stored.value, initiationNonce)) return null;
++    const oauthNonce = generateNonce();
++    const {verifier, challenge} = await generatePkce();
++    this.ctx.storage.kv.put<StoredNonce>("nonce", {
++      value: oauthNonce,
++      expiresAt: Date.now() + NONCE_LIFETIME_MS,
++      stage: "oauth",
++      verifier,
++    });
++    return {oauthNonce, challenge};
++  }
++
++  /**
++   * OAuth stateを消費して認可codeを検証済みemailへ交換し、loginを完了する。
++   *
++   * @param code Keycloak callbackから受け取った認可code。
++   * @param oauthNonce callback stateから受け取ったnonce。
++   * @returns loginが完了した場合はtrue、stateまたはtokenが無効な場合はfalse。
++   */
++  async acceptAuthCode(code: string, oauthNonce: string): Promise<boolean> {
++    const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
++    if (!stored || stored.stage !== "oauth" || !stored.verifier ||
++        Date.now() >= stored.expiresAt || !await constantTimeEqual(stored.value, oauthNonce)) {
++      return false;
++    }
++    this.ctx.storage.kv.delete("nonce");
++    const email = await exchangeCodeForVerifiedEmail(this.#config(), code, stored.verifier);
++    const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
++    if (!email || !callback) return false;
++    this.ctx.storage.kv.put("email", email);
++    await callback.complete(this.ctx.exports.GatekeeperUserImpl({
++      props: {userObjectId: this.ctx.id.toString()},
++    }));
++    await this.ctx.storage.setAlarm(Date.now() + TRANSIENT_ACCOUNT_LIFETIME_MS);
++    return true;
++  }
++
++  /**
++   * callback処理中だけ利用する検証済みemailを返す。
++   *
++   * @returns 検証済みemail。未認証または削除済みの場合はnull。
++   */
++  async getVerifiedEmail(): Promise<string | null> {
++    return this.ctx.storage.kv.get<string>("email") ?? null;
++  }
++
++  /**
++   * Login flowの期限切れstateと一時的なidentityを削除する。
++   *
++   * @returns 削除完了時に解決するPromise。
++   */
++  async alarm(): Promise<void> {
++    await this.ctx.storage.deleteAll();
++  }
++
++  /**
++   * この認証sessionが保持する一時dataを即時削除する。
++   *
++   * @returns 削除完了時に解決するPromise。
++   */
++  async revoke(): Promise<void> {
++    await this.ctx.storage.deleteAlarm();
++    await this.ctx.storage.deleteAll();
++  }
++}
++
++/** Cloudflare OSがlogin完了時に検証済みidentityを読むRPC object。 */
++@validateRpc()
++export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserProps>
++    implements GatekeeperUser {
++  /**
++   * 対応する一時account Durable Objectを取得する。
++   *
++   * @returns 一時accountのRPC stub。
++   */
++  #account() {
++    const id = this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId);
++    return this.ctx.exports.UserAccount.get(id);
++  }
++
++  /**
++   * Login identityをUI用account情報へ変換する。
++   *
++   * @returns 検証済みemailを含むaccount表示情報。
++   */
++  async describe(): Promise<AccountDescription> {
++    const email = await this.#account().getVerifiedEmail();
++    return {
++      displayName: email || "Keycloak user",
++      uniqueName: email || undefined,
++      avatar: {url: KEYCLOAK_LOGO},
++    };
++  }
++
++  /**
++   * Cloudflare OSのaccount keyに使う検証済みemailを返す。
++   *
++   * @returns 検証済みemail。利用可能でなければnull。
++   */
++  async getAuthenticatedEmail(): Promise<string | null> {
++    return this.#account().getVerifiedEmail();
++  }
++
++  /**
++   * 認証専用accountにはresourceがないため空の一覧を返す。
++   *
++   * @returns 常に空のresource一覧。
++   */
++  async getSupportedResources(): Promise<SupportedResource[]> {
++    return [];
++  }
++
++  /**
++   * 認証専用accountでresource binding作成を拒否する。
++   *
++   * @param url 呼出元が指定したresource URL。
++   * @returns このmethodは正常終了しない。
++   * @throws 常に未対応errorを送出する。
++   */
++  async getGatekeeperClassFor(url: string): Promise<{
++    class: DurableObjectClass<Gatekeeper<unknown>>;
++    resource: SupportedResource;
++  }> {
++    throw new Error(`Keycloak Gatekeeperはresourceを提供しません: ${url}`);
++  }
++
++  /**
++   * 認証専用accountでresource設定UIの開始を拒否する。
++   *
++   * @param resourceUrlPattern 呼出元が指定したresource URL pattern。
++   * @returns このmethodは正常終了しない。
++   * @throws 常に未対応errorを送出する。
++   */
++  async startResourceConfigurator(
++      resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
++    throw new Error(`Keycloak Gatekeeperはresourceを提供しません: ${resourceUrlPattern}`);
++  }
++
++  /**
++   * 一時identityを削除する。
++   *
++   * @returns 削除完了時に解決するPromise。
++   */
++  async revoke(): Promise<void> {
++    await this.#account().revoke();
++  }
++
++  /**
++   * 一時認証accountの再接続を拒否する。
++   *
++   * @returns このmethodは正常終了しない。
++   * @throws 常に再接続非対応errorを送出する。
++   */
++  async reconnect(): Promise<{url: string}> {
++    throw new Error("Keycloak sign-inは再接続できません。もう一度sign inしてください。");
++  }
++
++  /**
++   * resource権限を持たないidentity用のopaque verifierを返す。
++   *
++   * @returns methodを持たない同一vendor用verifier。
++   */
++  @skipRpcValidation()
++  async getVerifier(): Promise<Fetcher<GatekeeperUserVerifier>> {
++    return this.ctx.exports.KeycloakVerifier({});
++  }
++
++  /**
++   * 認証専用accountでは追加resource認可が不要であることを返す。
++   *
++   * @param resourceUrlPatterns 呼出元が要求したresource URL pattern。認証専用のため未使用。
++   * @returns 認可URLを含まない結果。
++   */
++  async ensureResources(resourceUrlPatterns: string[]): Promise<{url?: string}> {
++    return {};
++  }
++}
++
++/** 認証専用accountを同一vendor由来として識別するopaque verifier。 */
++@validateRpc()
++export class KeycloakVerifier extends WorkerEntrypoint<Env>
++    implements GatekeeperUserVerifier {
++  /**
++   * Opaque capabilityをRPC objectとして公開するための副作用なしmethod。
++   *
++   * @returns 常にvoid。
++   */
++  verify(): void {}
++}
+diff --git a/packages/gatekeeper-keycloak/src/oauth.ts b/packages/gatekeeper-keycloak/src/oauth.ts
+new file mode 100644
+index 0000000..34a1b06
+--- /dev/null
++++ b/packages/gatekeeper-keycloak/src/oauth.ts
+@@ -0,0 +1,163 @@
++import { createRemoteJWKSet, jwtVerify } from "jose";
++import { stripTrailingSlashes } from "@gadgets/workshop-shared/gatekeeper";
++
++/** Keycloak OIDCへ接続するためのWorker環境変数。 */
++export type KeycloakOAuthEnv = {
++  BASE_URL?: string;
++  CLIENT_ID?: string;
++  CLIENT_SECRET?: string;
++  ISSUER_URL?: string;
++  INTERNAL_ISSUER_URL?: string;
++};
++
++/** 認可、token交換、ID token検証に使う固定済み設定。 */
++export type KeycloakOAuthConfig = {
++  clientId: string;
++  clientSecret: string;
++  issuerUrl: string;
++  internalIssuerUrl: string;
++  redirectUri: string;
++};
++
++/** Keycloak token endpointが返す最小限のJSON構造。 */
++type TokenResponse = {
++  id_token?: unknown;
++};
++
++/**
++ * Gatekeeperの公開base URLを末尾slashなしへ正規化する。
++ *
++ * @param env Workerへ渡された環境変数。
++ * @returns 正規化したGatekeeperの公開base URL。
++ */
++export function getBaseUrl(env: KeycloakOAuthEnv): string {
++  return stripTrailingSlashes(env.BASE_URL || "http://localhost:8787/gatekeeper/keycloak");
++}
++
++/**
++ * HTTP requestのroutingに使うGatekeeperのbase pathを返す。
++ *
++ * @param env Workerへ渡された環境変数。
++ * @returns rootの場合は空文字、それ以外は先頭slash付きpath。
++ */
++export function getBasePath(env: KeycloakOAuthEnv): string {
++  const path = new URL(getBaseUrl(env)).pathname;
++  return path === "/" ? "" : path;
++}
++
++/**
++ * 環境変数から完全なKeycloak OAuth設定を構築する。
++ *
++ * @param env Workerへ渡された環境変数。
++ * @returns 必須値が揃った場合はOAuth設定、未設定の場合はnull。
++ */
++export function getOAuthConfig(env: KeycloakOAuthEnv): KeycloakOAuthConfig | null {
++  if (!env.CLIENT_ID || !env.CLIENT_SECRET || !env.ISSUER_URL) return null;
++  return {
++    clientId: env.CLIENT_ID,
++    clientSecret: env.CLIENT_SECRET,
++    issuerUrl: stripTrailingSlashes(env.ISSUER_URL),
++    internalIssuerUrl: stripTrailingSlashes(env.INTERNAL_ISSUER_URL || env.ISSUER_URL),
++    redirectUri: `${getBaseUrl(env)}/oauth`,
++  };
++}
++
++/**
++ * browserをKeycloakのAuthorization Code + PKCE flowへ送るURLを組み立てる。
++ *
++ * @param config Keycloak OAuth設定。
++ * @param state 認可応答とDurable Objectを結び付ける一回限りのstate。
++ * @param challenge PKCE S256 challenge。
++ * @returns browserへ返すKeycloak認可URL。
++ */
++export function buildAuthorizeUrl(
++    config: KeycloakOAuthConfig, state: string, challenge: string): string {
++  const url = new URL(`${config.issuerUrl}/protocol/openid-connect/auth`);
++  url.searchParams.set("response_type", "code");
++  url.searchParams.set("client_id", config.clientId);
++  url.searchParams.set("redirect_uri", config.redirectUri);
++  url.searchParams.set("scope", "openid email profile");
++  url.searchParams.set("state", state);
++  url.searchParams.set("code_challenge", challenge);
++  url.searchParams.set("code_challenge_method", "S256");
++  return url.toString();
++}
++
++/**
++ * byte列をpaddingなしのBase64 URL文字列へ変換する。
++ *
++ * @param bytes 変換対象のbyte列。
++ * @returns Base64 URL encoded文字列。
++ */
++function base64UrlEncode(bytes: ArrayBuffer | Uint8Array): string {
++  const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
++  return btoa(String.fromCodePoint(...array))
++      .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
++}
++
++/**
++ * Authorization Code flowをbrowser sessionへ束縛するPKCE pairを生成する。
++ *
++ * @returns verifierとS256 challenge。
++ */
++export async function generatePkce(): Promise<{verifier: string; challenge: string}> {
++  const verifier = base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)));
++  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
++  return {verifier, challenge: base64UrlEncode(digest)};
++}
++
++/**
++ * 認可codeをtokenへ交換し、署名・issuer・audience・email確認済みclaimを検証する。
++ *
++ * @param config Keycloak OAuth設定。
++ * @param code Keycloakがcallbackへ返した一回限りの認可code。
++ * @param verifier 認可requestで使ったPKCE verifier。
++ * @returns 検証済みemail address。交換または検証に失敗した場合はnull。
++ * @throws JWKS取得や暗号検証の実行自体に失敗した場合は例外を送出する。
++ */
++export async function exchangeCodeForVerifiedEmail(
++    config: KeycloakOAuthConfig, code: string, verifier: string): Promise<string | null> {
++  const response = await fetch(`${config.internalIssuerUrl}/protocol/openid-connect/token`, {
++    method: "POST",
++    headers: {
++      "Content-Type": "application/x-www-form-urlencoded",
++      "Accept": "application/json",
++    },
++    body: new URLSearchParams({
++      grant_type: "authorization_code",
++      client_id: config.clientId,
++      client_secret: config.clientSecret,
++      code,
++      redirect_uri: config.redirectUri,
++      code_verifier: verifier,
++    }),
++  });
++  if (!response.ok) {
++    await response.body?.cancel();
++    return null;
++  }
++
++  const data: unknown = await response.json();
++  if (!isTokenResponse(data) || typeof data.id_token !== "string") return null;
++
++  const jwks = createRemoteJWKSet(
++      new URL(`${config.internalIssuerUrl}/protocol/openid-connect/certs`));
++  const {payload} = await jwtVerify(data.id_token, jwks, {
++    issuer: config.issuerUrl,
++    audience: config.clientId,
++    algorithms: ["RS256", "PS256", "ES256"],
++  });
++  if (payload.email_verified !== true || typeof payload.email !== "string") return null;
++  const email = payload.email.trim().toLowerCase();
++  return email.length > 0 ? email : null;
++}
++
++/**
++ * 外部token responseが検査可能なobjectか判定する。
++ *
++ * @param value JSON parserが返した未検証値。
++ * @returns objectとしてID token fieldを検査できる場合はtrue。
++ */
++function isTokenResponse(value: unknown): value is TokenResponse {
++  return typeof value === "object" && value !== null;
++}
+diff --git a/packages/gatekeeper-keycloak/tsconfig.json b/packages/gatekeeper-keycloak/tsconfig.json
+new file mode 100644
+index 0000000..a54e089
+--- /dev/null
++++ b/packages/gatekeeper-keycloak/tsconfig.json
+@@ -0,0 +1,15 @@
++{
++  "extends": "../../tsconfig.json",
++  "compilerOptions": {
++    "target": "ES2022",
++    "lib": ["ESNext"],
++    "module": "ESNext",
++    "moduleResolution": "bundler",
++    "types": ["@cloudflare/workers-types", "./worker-configuration.d.ts"],
++    "paths": {
++      "@gadgets/workshop-shared/*": ["../workshop-shared/src/*"]
++    }
++  },
++  "include": ["src", "__tests__/**/*.ts", "worker-configuration.d.ts"],
++  "exclude": ["dist", "node_modules", ".wrangler"]
++}
+diff --git a/packages/gatekeeper-keycloak/vite.config.ts b/packages/gatekeeper-keycloak/vite.config.ts
+new file mode 100644
+index 0000000..5b214db
+--- /dev/null
++++ b/packages/gatekeeper-keycloak/vite.config.ts
+@@ -0,0 +1,15 @@
++import { withVitestTask } from "@gadgets/scripts/vitest-task";
++
++/**
++ * Keycloak Gatekeeperのtype checkとunit testをVite+ taskとして定義する。
++ *
++ * @returns Vite+のpackage設定。
++ */
++export default withVitestTask({
++  run: {
++    tasks: {
++      build: {command: "tsc"},
++      clean: {command: "rm -rf dist", cache: false},
++    },
++  },
++}, ["vitest run"]);
+diff --git a/packages/gatekeeper-keycloak/vitest.config.ts b/packages/gatekeeper-keycloak/vitest.config.ts
+new file mode 100644
+index 0000000..bd52555
+--- /dev/null
++++ b/packages/gatekeeper-keycloak/vitest.config.ts
+@@ -0,0 +1,13 @@
++import { defineConfig } from "vitest/config";
++
++/**
++ * Keycloak OAuthの純粋logic testをNode環境で実行する設定を返す。
++ *
++ * @returns Vitestの設定。
++ */
++export default defineConfig({
++  test: {
++    include: ["__tests__/*.test.ts"],
++    environment: "node",
++  },
++});
+diff --git a/packages/gatekeeper-keycloak/worker-configuration.d.ts b/packages/gatekeeper-keycloak/worker-configuration.d.ts
+new file mode 100644
+index 0000000..dbe4d3a
+--- /dev/null
++++ b/packages/gatekeeper-keycloak/worker-configuration.d.ts
+@@ -0,0 +1,18 @@
++/// <reference types="@cloudflare/workers-types" />
++
++interface KeycloakGatekeeperEnv {
++  BASE_URL?: string;
++  CLIENT_ID?: string;
++  CLIENT_SECRET?: string;
++  ISSUER_URL?: string;
++  INTERNAL_ISSUER_URL?: string;
++}
++
++declare namespace Cloudflare {
++  interface GlobalProps {
++    mainModule: typeof import("./src/keycloak");
++    durableNamespaces: "UserAccount";
++  }
++
++  interface Env extends KeycloakGatekeeperEnv {}
++}
+diff --git a/packages/gatekeeper-keycloak/wrangler.jsonc b/packages/gatekeeper-keycloak/wrangler.jsonc
+new file mode 100644
+index 0000000..1ad36bb
+--- /dev/null
++++ b/packages/gatekeeper-keycloak/wrangler.jsonc
+@@ -0,0 +1,21 @@
++{
++  "name": "gatekeeper-keycloak",
++  "main": ".wrangler/validate/src/keycloak.ts",
++  "build": {
++    "command": "pnpm exec capnweb-validate build --out .wrangler/validate",
++    "watch_dir": "src"
++  },
++  "compatibility_date": "2026-02-02",
++  "compatibility_flags": ["allow_irrevocable_stub_storage", "nodejs_als"],
++  "migrations": [
++    {
++      "tag": "v0",
++      "new_sqlite_classes": ["UserAccount"]
++    }
++  ],
++  "observability": {
++    "enabled": true,
++    "head_sampling_rate": 1,
++    "logs": {"invocation_logs": false}
++  }
++}
 diff --git a/packages/workshop-backend/src/user.ts b/packages/workshop-backend/src/user.ts
-index 5ad4a23..e40a543 100644
+index 5ad4a23..061e094 100644
 --- a/packages/workshop-backend/src/user.ts
 +++ b/packages/workshop-backend/src/user.ts
 @@ -73,0 +74,28 @@ export type UserAiModelRecord = {
@@ -27,7 +869,7 @@ index 5ad4a23..e40a543 100644
 +
 +  return {
 +    profile: {type: "agent", id: model, name: name || `LiteLLM · ${model}`},
-+    config: {provider: "ollama", model, apiToken, apiUrl},
++    config: {provider: "openai", model, apiToken, apiUrl},
 +  };
 +}
 +
@@ -57,30 +899,6 @@ index 5ad4a23..e40a543 100644
 +      }
 @@ -724,0 +766 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
 +      result.quickModel ??= getLiteLlmModel(this.env)?.config;
-diff --git a/scripts/run-dev-server.ts b/scripts/run-dev-server.ts
-index cab5fdc..dfbd7f7 100644
---- a/scripts/run-dev-server.ts
-+++ b/scripts/run-dev-server.ts
-@@ -491,0 +492,2 @@ for (const gk of gatekeepers) {
-+    // Composeで管理するLiteLLMを全userの既定modelとして公開する。
-+    "LITELLM_MODEL", "LITELLM_MODEL_NAME", "LITELLM_API_BASE",
-@@ -498,0 +501,13 @@ for (const gk of gatekeepers) {
-+  // LiteLLM keyをWranglerのbinding一覧へ露出させず、local secretとして渡す。
-+  if (process.env.LITELLM_API_KEY) {
-+    config.secrets = config.secrets || {};
-+    config.secrets.required = [
-+      ...new Set([...(config.secrets.required || []), "LITELLM_API_KEY"]),
-+    ];
-+    writeFileSync(
-+      join(WORKSHOP_BACKEND_DIR, ".dev.vars"),
-+      `LITELLM_API_KEY=${JSON.stringify(process.env.LITELLM_API_KEY)}\n`,
-+      {mode: 0o600},
-+    );
-+  }
-+
-@@ -553,0 +569,2 @@ if (wranglerPort) {
-+// Container外から到達できるよう、明示されたlisten addressをWranglerへ渡す。
-+if (process.env.WRANGLER_DEV_IP) args.push("--ip", process.env.WRANGLER_DEV_IP);
 diff --git a/packages/workshop-frontend/index.html b/packages/workshop-frontend/index.html
 index aeb2f3a..b06324b 100644
 --- a/packages/workshop-frontend/index.html
@@ -103,3 +921,95 @@ index aeb2f3a..b06324b 100644
 +        };
 +      }
 +    </script>
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 0729063..3b6bd8d 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -435,0 +436,28 @@ importers:
++  packages/gatekeeper-keycloak:
++    dependencies:
++      '@gadgets/workshop-shared':
++        specifier: workspace:*
++        version: link:../workshop-shared
++      capnweb-validate:
++        specifier: 'catalog:'
++        version: 0.3.0(capnweb@0.12.0)(esbuild@0.28.1)(rollup@4.62.3)(vite@7.3.6(@types/node@26.1.0)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(yaml@2.9.0))
++      jose:
++        specifier: ^6.2.8
++        version: 6.2.8
++    devDependencies:
++      '@cloudflare/workers-types':
++        specifier: ^5.20260825.1
++        version: 5.20260825.1
++      '@gadgets/scripts':
++        specifier: workspace:*
++        version: link:../../scripts
++      typescript:
++        specifier: 'catalog:'
++        version: 7.0.2
++      vitest:
++        specifier: 'catalog:'
++        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(jsdom@26.1.0(supports-color@10.2.2))(vite@7.3.6(@types/node@26.1.0)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(yaml@2.9.0))
++      wrangler:
++        specifier: 'catalog:'
++        version: 4.125.0(@cloudflare/workers-types@5.20260825.1)
++
+diff --git a/scripts/run-dev-server.ts b/scripts/run-dev-server.ts
+index cab5fdc..f5f9ec0 100644
+--- a/scripts/run-dev-server.ts
++++ b/scripts/run-dev-server.ts
+@@ -449,0 +450,27 @@ for (const gk of gatekeepers) {
++  // Keycloakのpublic/internal issuerを分離し、client secretだけをlocal secret fileへ置く。
++  if (gk.name === "gatekeeper-keycloak") {
++    if (process.env.PUBLIC_BASE_URL) {
++      config.vars.BASE_URL =
++          `${process.env.PUBLIC_BASE_URL.replace(/\/+$/, "")}/gatekeeper/keycloak`;
++    }
++    const keycloakVars = [
++      ["CLIENT_ID", "KEYCLOAK_OIDC_CLIENT_ID"],
++      ["ISSUER_URL", "KEYCLOAK_ISSUER_URL"],
++      ["INTERNAL_ISSUER_URL", "KEYCLOAK_INTERNAL_ISSUER_URL"],
++    ] as const;
++    for (const [target, source] of keycloakVars) {
++      if (process.env[source] !== undefined) config.vars[target] = process.env[source];
++    }
++    if (process.env.KEYCLOAK_OIDC_CLIENT_SECRET) {
++      config.secrets = config.secrets || {};
++      config.secrets.required = [
++        ...new Set([...(config.secrets.required || []), "CLIENT_SECRET"]),
++      ];
++      writeFileSync(
++        join(gk.dir, ".dev.vars"),
++        `CLIENT_SECRET=${JSON.stringify(process.env.KEYCLOAK_OIDC_CLIENT_SECRET)}\n`,
++        {mode: 0o600},
++      );
++    }
++  }
++
+@@ -473 +500 @@ for (const gk of gatekeepers) {
+-  // For local testing, create an account named "admin" to test admin features.
++  // OIDC identityを含め、Composeから指定されたaccountを管理者として扱う。
+@@ -475 +502,2 @@ for (const gk of gatekeepers) {
+-  config.vars.ADMINS = ["admin"];
++  const admins = process.env.ADMINS?.split(",").map(value => value.trim()).filter(Boolean);
++  config.vars.ADMINS = admins?.length ? admins : ["admin"];
+@@ -491,0 +520,2 @@ for (const gk of gatekeepers) {
++    // Composeで管理するLiteLLMを全userの既定modelとして公開する。
++    "LITELLM_MODEL", "LITELLM_MODEL_NAME", "LITELLM_API_BASE",
+@@ -498,0 +529,13 @@ for (const gk of gatekeepers) {
++  // LiteLLM keyをWranglerのbinding一覧へ露出させず、local secretとして渡す。
++  if (process.env.LITELLM_API_KEY) {
++    config.secrets = config.secrets || {};
++    config.secrets.required = [
++      ...new Set([...(config.secrets.required || []), "LITELLM_API_KEY"]),
++    ];
++    writeFileSync(
++      join(WORKSHOP_BACKEND_DIR, ".dev.vars"),
++      `LITELLM_API_KEY=${JSON.stringify(process.env.LITELLM_API_KEY)}\n`,
++      {mode: 0o600},
++    );
++  }
++
+@@ -553,0 +597,2 @@ if (wranglerPort) {
++// Container外から到達できるよう、明示されたlisten addressをWranglerへ渡す。
++if (process.env.WRANGLER_DEV_IP) args.push("--ip", process.env.WRANGLER_DEV_IP);

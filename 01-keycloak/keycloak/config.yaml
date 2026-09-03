@@ -52,6 +52,34 @@ users:
 
 clients:
   #
+  # Cloudflare OS
+  #
+  - clientId: cloudflare-os
+    name: Cloudflare OS
+    enabled: true
+    protocol: openid-connect
+
+    publicClient: false
+    clientAuthenticatorType: client-secret
+    secret: "$(env:CLOUDFLARE_OS_OIDC_CLIENT_SECRET)"
+
+    standardFlowEnabled: true
+    implicitFlowEnabled: false
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: false
+
+    rootUrl: "http://$(env:PUBLIC_HOST):32500/"
+
+    redirectUris:
+      - "http://$(env:PUBLIC_HOST):32500/gatekeeper/keycloak/oauth"
+
+    webOrigins:
+      - "http://$(env:PUBLIC_HOST):32500"
+
+    attributes:
+      pkce.code.challenge.method: S256
+
+  #
   # Open WebUI
   #
   - clientId: open-webui

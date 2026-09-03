@@ -14,6 +14,13 @@ services:
       PUBLIC_BASE_URL: http://${PUBLIC_HOST}:32500
       VITE_BACKEND_HOST: localhost:8787
       WRANGLER_DEV_IP: 0.0.0.0
+      AUTH_GATEKEEPERS: keycloak
+      DISABLE_PASSWORD_AUTH: ${CLOUDFLARE_OS_DISABLE_PASSWORD_AUTH:-false}
+      ADMINS: ${CLOUDFLARE_OS_ADMINS:-admin,admin@admin.com}
+      KEYCLOAK_OIDC_CLIENT_ID: cloudflare-os
+      KEYCLOAK_OIDC_CLIENT_SECRET: ${CLOUDFLARE_OS_OIDC_CLIENT_SECRET:-sk-cloudflare-os-oidc-client-secret-key}
+      KEYCLOAK_ISSUER_URL: http://${PUBLIC_HOST}:30001/realms/prod
+      KEYCLOAK_INTERNAL_ISSUER_URL: http://keycloak:8080/realms/prod
       LITELLM_MODEL: ${CLOUDFLARE_OS_MODEL:-google/gemma4:31b}
       LITELLM_MODEL_NAME: ${CLOUDFLARE_OS_MODEL_NAME:-LiteLLM · Gemma 4 31B}
       LITELLM_API_BASE: http://litellm:4000/v1
