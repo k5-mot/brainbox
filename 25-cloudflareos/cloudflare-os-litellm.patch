@@ -81,3 +81,25 @@ index cab5fdc..dfbd7f7 100644
 @@ -553,0 +569,2 @@ if (wranglerPort) {
 +// Container外から到達できるよう、明示されたlisten addressをWranglerへ渡す。
 +if (process.env.WRANGLER_DEV_IP) args.push("--ip", process.env.WRANGLER_DEV_IP);
+diff --git a/packages/workshop-frontend/index.html b/packages/workshop-frontend/index.html
+index aeb2f3a..b06324b 100644
+--- a/packages/workshop-frontend/index.html
++++ b/packages/workshop-frontend/index.html
+@@ -14,0 +15,17 @@
++    <script>
++      if (!crypto.randomUUID) {
++        /**
++         * 非secure originでも暗号学的乱数からUUID v4を生成する。
++         *
++         * @returns {string} UUID v4文字列。
++         */
++        crypto.randomUUID = function randomUUIDFallback() {
++          const bytes = crypto.getRandomValues(new Uint8Array(16));
++          bytes[6] = (bytes[6] & 0x0f) | 0x40;
++          bytes[8] = (bytes[8] & 0x3f) | 0x80;
++          const hex = [];
++          for (const byte of bytes) hex.push(byte.toString(16).padStart(2, '0'));
++          return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
++        };
++      }
++    </script>
