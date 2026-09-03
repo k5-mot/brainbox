@@ -1,0 +1,83 @@
+diff --git a/packages/workshop-backend/src/user.ts b/packages/workshop-backend/src/user.ts
+index 5ad4a23..e40a543 100644
+--- a/packages/workshop-backend/src/user.ts
++++ b/packages/workshop-backend/src/user.ts
+@@ -73,0 +74,28 @@ export type UserAiModelRecord = {
++type LiteLlmModelEnv = Cloudflare.Env & {
++  LITELLM_MODEL?: string;
++  LITELLM_MODEL_NAME?: string;
++  LITELLM_API_BASE?: string;
++  LITELLM_API_KEY?: string;
++};
++
++/**
++ * Composeから注入されたLiteLLM接続をuser共通modelへ変換する。
++ *
++ * @param env Workerへ渡された環境変数。
++ * @returns 必須値が揃った場合はLiteLLM model、未設定の場合はundefined。
++ */
++function getLiteLlmModel(env: Cloudflare.Env): UserAiModelRecord | undefined {
++  const {
++    LITELLM_MODEL: model,
++    LITELLM_MODEL_NAME: name,
++    LITELLM_API_BASE: apiUrl,
++    LITELLM_API_KEY: apiToken,
++  } = env as LiteLlmModelEnv;
++  if (!model || !apiUrl || !apiToken) return undefined;
++
++  return {
++    profile: {type: "agent", id: model, name: name || `LiteLLM · ${model}`},
++    config: {provider: "ollama", model, apiToken, apiUrl},
++  };
++}
++
+@@ -540,0 +569,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
++    // Deploy側で固定したLiteLLM routeはuser設定より優先する。
++    let liteLlmModel = getLiteLlmModel(this.env);
++    if (!gwConfig && liteLlmModel) {
++      result.push(liteLlmModel.profile);
++      gwModelIds.add(liteLlmModel.profile.id);
++    }
++
+@@ -580 +615,2 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
+-    if (result && this.storage.aiModels.get(result)) {
++    let liteLlmModel = getLiteLlmModel(this.env);
++    if (result && (this.storage.aiModels.get(result) || result === liteLlmModel?.profile.id)) {
+@@ -583 +619 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
+-      return null;
++      return liteLlmModel?.profile.id ?? null;
+@@ -595 +631,2 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
+-      let exists = !!this.storage.aiModels.get(id) || !!gwConfig?.resolveModel(id);
++      let exists = !!this.storage.aiModels.get(id) || !!gwConfig?.resolveModel(id) ||
++          id === getLiteLlmModel(this.env)?.profile.id;
+@@ -709,0 +747,4 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
++      if (!result.aiModel) {
++        let liteLlmModel = getLiteLlmModel(this.env);
++        if (liteLlmModel?.profile.id === modelId) result.aiModel = liteLlmModel;
++      }
+@@ -724,0 +766 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
++      result.quickModel ??= getLiteLlmModel(this.env)?.config;
+diff --git a/scripts/run-dev-server.ts b/scripts/run-dev-server.ts
+index cab5fdc..dfbd7f7 100644
+--- a/scripts/run-dev-server.ts
++++ b/scripts/run-dev-server.ts
+@@ -491,0 +492,2 @@ for (const gk of gatekeepers) {
++    // Composeで管理するLiteLLMを全userの既定modelとして公開する。
++    "LITELLM_MODEL", "LITELLM_MODEL_NAME", "LITELLM_API_BASE",
+@@ -498,0 +501,13 @@ for (const gk of gatekeepers) {
++  // LiteLLM keyをWranglerのbinding一覧へ露出させず、local secretとして渡す。
++  if (process.env.LITELLM_API_KEY) {
++    config.secrets = config.secrets || {};
++    config.secrets.required = [
++      ...new Set([...(config.secrets.required || []), "LITELLM_API_KEY"]),
++    ];
++    writeFileSync(
++      join(WORKSHOP_BACKEND_DIR, ".dev.vars"),
++      `LITELLM_API_KEY=${JSON.stringify(process.env.LITELLM_API_KEY)}\n`,
++      {mode: 0o600},
++    );
++  }
++
+@@ -553,0 +569,2 @@ if (wranglerPort) {
++// Container外から到達できるよう、明示されたlisten addressをWranglerへ渡す。
++if (process.env.WRANGLER_DEV_IP) args.push("--ip", process.env.WRANGLER_DEV_IP);

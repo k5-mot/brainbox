@@ -233,6 +233,7 @@ verify_compose_config() {
     owui
     dify
     ragflow
+    cloudflareos
     nextcloud
     xwiki
     kaneo

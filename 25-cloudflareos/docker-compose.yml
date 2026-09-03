@@ -1,0 +1,51 @@
+services:
+  cloudflare-os:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CLOUDFLARE_OS_REF: ${CLOUDFLARE_OS_REF:-df04e239ed85376643c586a7329d3b8604df489e}
+    image: localhost/inferlab/cloudflare-os:${CLOUDFLARE_OS_REF:-df04e239ed85376643c586a7329d3b8604df489e}
+    container_name: ${STACK_NAME}-cloudflare-os
+    restart: unless-stopped
+    profiles:
+      - cloudflareos
+    environment:
+      PUBLIC_BASE_URL: http://${PUBLIC_HOST}:32500
+      VITE_BACKEND_HOST: localhost:8787
+      WRANGLER_DEV_IP: 0.0.0.0
+      LITELLM_MODEL: ${CLOUDFLARE_OS_MODEL:-google/gemma4:31b}
+      LITELLM_MODEL_NAME: ${CLOUDFLARE_OS_MODEL_NAME:-LiteLLM · Gemma 4 31B}
+      LITELLM_API_BASE: http://litellm:4000/v1
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key}
+      TZ: Asia/Tokyo
+    ports:
+      - 32500:8787
+    volumes:
+      - cloudflare-os-wrangler:/workspace/.wrangler
+    networks:
+      - internal-nw
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - Promise.all([fetch('http://127.0.0.1:8787'),fetch('http://litellm:4000/v1/models',{headers:{Authorization:'Bearer '+process.env.LITELLM_API_KEY}})]).then(rs=>process.exit(rs.every(r=>r.ok)?0:1)).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+    mem_limit: 6g
+    pids_limit: 2048
+    labels:
+      - homepage.icon=/icons/cloudflare.png
+      - homepage.group=25-cloudflareos
+      - homepage.name=Cloudflare OS
+      - homepage.href=http://${PUBLIC_HOST}:32500
+      - homepage.description=AI productivity environment
+
+volumes:
+  cloudflare-os-wrangler:
+
+networks:
+  internal-nw:
