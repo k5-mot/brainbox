@@ -248,6 +248,9 @@ scripts/
 ### Download-HFRepo.ps1
 ### Download-RPM.ps1
 ### Download-DEB.ps1
+
+- Packages metadataの一時fileは`OutputDir`と同じvolumeへ作成し、user profileの一時directoryを使用しない。
+
 ### Download-VSIX.ps1
 ### Download-DockerImages.ps1
 ### Download-LibreTranslate.ps1
