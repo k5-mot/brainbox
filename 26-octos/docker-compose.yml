@@ -29,7 +29,7 @@ services:
       OCTOS_HOME: /var/lib/octos
       OCTOS_CONFIG_DIR: /var/lib/octos/config
       OCTOS_BOOTSTRAP_AUTH_TOKEN: ${OCTOS_AUTH_TOKEN:-}
-      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY is required}
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key}
       TZ: Asia/Tokyo
     ports:
       - 32600:50080

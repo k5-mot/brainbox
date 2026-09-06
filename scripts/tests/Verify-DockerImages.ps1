@@ -22,7 +22,7 @@ foreach ($ComposePath in $ComposePaths) {
         if ($Image.Contains("$")) {
             continue
         }
-        if ($Image.StartsWith("local/")) {
+        if ($Image.StartsWith("local/") -or $Image.StartsWith("localhost/")) {
             continue
         }
         if ($ScriptSource -notmatch [regex]::Escape($Image)) {
