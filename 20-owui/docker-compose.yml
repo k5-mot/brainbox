@@ -102,9 +102,9 @@ services:
           {
             "type": "openapi",
             "url": "http://libretranslate:5000",
-            "spec_type": "url",
-            "spec": "",
-            "path": "spec",
+            "spec_type": "json",
+            "spec": "{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"LibreTranslate\",\"version\":\"1.9.6\"},\"paths\":{\"/translate\":{\"post\":{\"operationId\":\"translateText\",\"summary\":\"Translate text\",\"requestBody\":{\"required\":true,\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"required\":[\"q\",\"source\",\"target\"],\"properties\":{\"q\":{\"type\":\"string\",\"description\":\"Text to translate\"},\"source\":{\"type\":\"string\",\"description\":\"Source language code or auto\"},\"target\":{\"type\":\"string\",\"description\":\"Target language code\"},\"format\":{\"type\":\"string\",\"enum\":[\"text\",\"html\"],\"default\":\"text\"}}}}}},\"responses\":{\"200\":{\"description\":\"Translation result\"}}}}}}",
+            "path": "",
             "auth_type": "none",
             "key": "",
             "config": { "enable": true },
