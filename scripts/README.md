@@ -263,6 +263,7 @@ scripts/
 ### Download-NpmPkgs.ps1
 
 - script内の`$Packages`に定義されたnpm packageをダウンロードする.
+- npm cacheと作業directoryは`OutputDir`と同じvolumeへ一時作成し、user profileのnpm cacheと一時directoryを使用しない。
 - 以下の組み合わせのパッケージをダウンロードする.
   - Platform；
     - win32
