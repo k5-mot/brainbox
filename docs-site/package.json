@@ -1,0 +1,16 @@
+{
+  "name": "inferlab-specification-site",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/prepare-content.mjs && docusaurus build",
+    "serve": "docusaurus serve",
+    "start": "node scripts/prepare-content.mjs && docusaurus start"
+  },
+  "devDependencies": {
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/preset-classic": "3.10.2",
+    "@mdx-js/react": "3.1.1",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  }
+}

@@ -4,7 +4,7 @@
 
 ### Profile一覧
 
-`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`translate`、`owui`、`nextcloud`、`obsidian`、`llmwiki`、`langfuse` です。`registry`、`dify`、`ragflow`、`cloudflareos`、`octos`、`aion`、`xwiki`、`wikijs`、`kaneo`、`zulip`、`gitlab`、`o11y` などのその他の profile は必要な場合に個別に指定します。
+`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`translate`、`owui`、`nextcloud`、`obsidian`、`llmwiki`、`langfuse` です。その他のprofileは必要な場合に個別に指定します。
 
 | Profile | Compose file | 用途 |
 | --- | --- | --- |
@@ -12,6 +12,10 @@
 | `keycloak` | `01-keycloak/docker-compose.yml` | 認証 |
 | `pubnet` | `02-pubnet/docker-compose.yml` | 外部公開ネットワーク |
 | `inference` | `10-inference/docker-compose.yml` | 推論、埋め込み、エージェント、音声合成 |
+| `inference-tei` | `10-inference/docker-compose.yml` | TEIによる埋め込みとreranking |
+| `hermes-agent` | `10-inference/docker-compose.yml` | Hermes Agentだけの選択起動 |
+| `openclaw` | `10-inference/docker-compose.yml` | OpenClawだけの選択起動 |
+| `qwenpaw` | `10-inference/docker-compose.yml` | QwenPawだけの選択起動 |
 | `rag` | `11-rag/docker-compose.yml` | 文書処理とベクトル検索 |
 | `registry` | `12-registry/docker-compose.yml` | 開発用パッケージ配布 |
 | `translate` | `13-translate/docker-compose.yml` | 機械翻訳API |
@@ -19,15 +23,18 @@
 | `dify` | `21-dify/docker-compose.yml` | 自動化 |
 | `ragflow` | `22-ragflow/docker-compose.yml` | RAGとAgent platform |
 | `cloudflareos` | `25-cloudflareos/docker-compose.yml` | AI productivity environment |
+| `octos` | `26-octos/docker-compose.yml` | Agent workspace |
+| `aion` | `27-aion/docker-compose.yml` | AI chatとagent workspace |
 | `nextcloud` | `30-nextcloud/docker-compose.yml` | ファイル保存 |
 | `xwiki` | `31-xwiki/docker-compose.yml` | Wiki |
 | `kaneo` | `32-kaneo/docker-compose.yml` | プロジェクト管理 |
 | `zulip` | `33-zulip/docker-compose.yml` | チャット |
 | `gitlab` | `34-gitlab/docker-compose.yml` | Git 管理とCI |
-| `wikijs` | `37-wikijs/docker-compose.yml` | Wiki |
 | `obsidian` | `40-obsidian/docker-compose.yml` | Obsidian同期用CouchDB |
+| `openkb` | `40-obsidian/docker-compose.yml` | 旧OpenKB向けCouchDB互換profile |
 | `llmwiki` | `41-llmwiki/docker-compose.yml` | LLM Wiki compilerとviewer |
 | `o11y` | `50-o11y/docker-compose.yml` | 監視 |
+| `o11y-gpu` | `50-o11y/docker-compose.yml` | NVIDIA GPU metrics |
 | `langfuse` | `51-langfuse/docker-compose.yml` | Langfuse |
 
 ### Service一覧
@@ -41,19 +48,24 @@
 | `keycloak` | `keycloak` | `30001` | `01-keycloak/docker-compose.yml` |
 | `keycloak` | `keycloak-https` | `30002` | `01-keycloak/docker-compose.yml` |
 | `keycloak` | `keycloak-postgres` | - | `01-keycloak/docker-compose.yml` |
+| `keycloak` | `keycloak-config` | - | `01-keycloak/docker-compose.yml` |
 | `pubnet` | `cloudflare` | - | `02-pubnet/docker-compose.yml` |
 | `inference` | `litellm` | `31000` | `10-inference/docker-compose.yml` |
 | `inference` | `ollama` | - | `10-inference/docker-compose.yml` |
 | `inference` | `ollama-init` | - | `10-inference/docker-compose.yml` |
-| `inference` | `tei-embedding` | - | `10-inference/docker-compose.yml` |
-| `inference` | `tei-reranking` | - | `10-inference/docker-compose.yml` |
+| `inference` | `vllm-embedding` | - | `10-inference/docker-compose.yml` |
+| `inference` | `vllm-reranking` | - | `10-inference/docker-compose.yml` |
+| `inference-tei` | `tei-embedding` | - | `10-inference/docker-compose.yml` |
+| `inference-tei` | `tei-reranking` | - | `10-inference/docker-compose.yml` |
 | `inference`, `hermes-agent` | `hermes-agent` | `31001` | `10-inference/docker-compose.yml` |
-| `inference`, `hermes-agent` | `openclaw` | `31002` | `10-inference/docker-compose.yml` |
+| `inference`, `openclaw` | `openclaw` | `31002` | `10-inference/docker-compose.yml` |
+| `inference`, `openclaw` | `openclaw-init` | - | `10-inference/docker-compose.yml` |
 | `inference`, `qwenpaw` | `qwenpaw` | `31003` | `10-inference/docker-compose.yml` |
-| `inference` | `kokoro` | `31005` | `10-inference/docker-compose.yml` |
+| `inference`, `qwenpaw` | `qwenpaw-init` | - | `10-inference/docker-compose.yml` |
+| `inference` | `kokoro` | - | `10-inference/docker-compose.yml` |
 | `rag` | `docling` | `31100` | `11-rag/docker-compose.yml` |
 | `rag` | `qdrant` | - | `11-rag/docker-compose.yml` |
-| `registry` | `pypiserver` | `31200` | `12-registry/docker-compose.yml` |
+| `registry`, `dify` | `pypiserver` | `31200` | `12-registry/docker-compose.yml` |
 | `registry` | `verdaccio` | `31201` | `12-registry/docker-compose.yml` |
 | `registry` | `code-marketplace` | `31202` | `12-registry/docker-compose.yml` |
 | `registry` | `code-marketplace-importer` | - | `12-registry/docker-compose.yml` |
@@ -87,12 +99,14 @@
 | `dify` | `dify-qdrant` | - | `21-dify/docker-compose.yml` |
 | `dify` | `dify-nginx` | `32100` | `21-dify/docker-compose.yml` |
 | `ragflow` | `ragflow` | `32200`, `32201` | `22-ragflow/docker-compose.yml` |
-| `ragflow` | `ragflow-elasticsearch` | - | `22-ragflow/docker-compose.yml` |
+| `ragflow` | `ragflow-opensearch` | - | `22-ragflow/docker-compose.yml` |
 | `ragflow` | `ragflow-mysql` | - | `22-ragflow/docker-compose.yml` |
 | `ragflow` | `ragflow-rustfs` | `32202`, `32203` | `22-ragflow/docker-compose.yml` |
 | `ragflow` | `ragflow-rustfs-bucket-init` | - | `22-ragflow/docker-compose.yml` |
 | `ragflow` | `ragflow-valkey` | - | `22-ragflow/docker-compose.yml` |
 | `cloudflareos` | `cloudflare-os` | `32500` | `25-cloudflareos/docker-compose.yml` |
+| `octos` | `octos` | `32600` | `26-octos/docker-compose.yml` |
+| `aion` | `aion` | `32700` | `27-aion/docker-compose.yml` |
 | `nextcloud` | `nextcloud` | `33000` | `30-nextcloud/docker-compose.yml` |
 | `nextcloud` | `nextcloud-postgres` | - | `30-nextcloud/docker-compose.yml` |
 | `nextcloud` | `nextcloud-valkey` | - | `30-nextcloud/docker-compose.yml` |
@@ -108,15 +122,15 @@
 | `gitlab` | `gitlab` | `33400`, `33422` | `34-gitlab/docker-compose.yml` |
 | `gitlab` | `gitlab-runner-register` | - | `34-gitlab/docker-compose.yml` |
 | `gitlab` | `gitlab-runner` | - | `34-gitlab/docker-compose.yml` |
-| `wikijs` | `wikijs` | `33700` | `37-wikijs/docker-compose.yml` |
-| `wikijs` | `wikijs-postgres` | - | `37-wikijs/docker-compose.yml` |
-| `obsidian` | `couchdb` | `34000` | `40-obsidian/docker-compose.yml` |
+| `obsidian`, `llmwiki`, `openkb` | `couchdb` | `34000` | `40-obsidian/docker-compose.yml` |
 | `llmwiki` | `llmwiki` | `34100` | `41-llmwiki/docker-compose.yml` |
+| `llmwiki` | `llmwiki-ingester` | - | `41-llmwiki/docker-compose.yml` |
 | `o11y` | `grafana` | `35000` | `50-o11y/docker-compose.yml` |
 | `o11y` | `prometheus` | `35001` | `50-o11y/docker-compose.yml` |
 | `o11y` | `node-exporter` | - | `50-o11y/docker-compose.yml` |
 | `o11y` | `cadvisor` | - | `50-o11y/docker-compose.yml` |
 | `o11y` | `blackbox-exporter` | - | `50-o11y/docker-compose.yml` |
+| `o11y-gpu` | `nvidia-dcgm-exporter` | - | `50-o11y/docker-compose.yml` |
 | `langfuse` | `langfuse-worker` | - | `51-langfuse/docker-compose.yml` |
 | `langfuse` | `langfuse-web` | `35100` | `51-langfuse/docker-compose.yml` |
 | `langfuse` | `langfuse-clickhouse` | - | `51-langfuse/docker-compose.yml` |
@@ -151,15 +165,17 @@
 - [Inference](10-inference/README.md)
 - [RAG](11-rag/README.md)
 - [Registry](12-registry/README.md)
+- [LibreTranslate](13-translate/README.md)
 - [Open WebUI](20-owui/README.md)
 - [Dify](21-dify/README.md)
 - [RAGFlow](22-ragflow/README.md)
 - [Cloudflare OS](25-cloudflareos/README.md)
+- [Octos](26-octos/README.md)
+- [AionUi](27-aion/README.md)
 - [Nextcloud](30-nextcloud/README.md)
 - [XWiki](31-xwiki/README.md)
 - [Zulip](33-zulip/README.md)
 - [GitLab](34-gitlab/README.md)
-- [Wiki.js](37-wikijs/README.md)
 - [LLM Wiki](41-llmwiki/README.md)
 - [Observability](50-o11y/README.md)
 - [Langfuse](51-langfuse/README.md)

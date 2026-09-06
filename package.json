@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "docs:start": "pnpm --dir docs-site start",
+    "docs:build": "pnpm --dir docs-site build",
+    "docs:serve": "pnpm --dir docs-site serve",
+    "docs:validate": "openspec validate --all --strict --no-interactive && pnpm --dir docs-site build",
+    "test": "pnpm docs:validate"
   },
   "keywords": [],
   "author": "",
