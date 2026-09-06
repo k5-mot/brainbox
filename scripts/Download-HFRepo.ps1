@@ -19,6 +19,7 @@ Hugging Face repositoryを`C:\airgap\hfrepo`へ取得します。
 
 .NOTES
 副作用として指定directory配下へfileを作成または上書きします。
+Hugging Faceのcacheは`OutputDir/.hf-cache`を使用し、user profileのcacheを使用しません。
 実行にはPowerShellとhfが必要です。
 #>
 [CmdletBinding()]
@@ -36,6 +37,7 @@ if (-not $OutputDir) {
 }
 
 $ErrorActionPreference = "Stop"
+$OutputRoot = [System.IO.Path]::GetFullPath($OutputDir)
 $Registries = @(
     "https://huggingface.co"
 )
@@ -130,12 +132,20 @@ function Save-HuggingFaceRepository {
     }
 }
 
-$DestinationDirectory = Join-Path ([System.IO.Path]::GetFullPath($OutputDir)) "hfrepo"
+$DestinationDirectory = Join-Path $OutputRoot "hfrepo"
+$CacheDirectory = Join-Path $OutputRoot ".hf-cache"
 New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
+New-Item -ItemType Directory -Path $CacheDirectory -Force | Out-Null
 $env:HF_ENDPOINT = $Registries[0]
-
-foreach ($Repository in $Packages) {
-    $DirectoryName = ConvertTo-HuggingFaceDirectoryName -Repository $Repository
-    $OutputDirectory = Join-Path $DestinationDirectory $DirectoryName
-    Save-HuggingFaceRepository -Repository $Repository -OutputDirectory $OutputDirectory
+$PreviousHfHome = $env:HF_HOME
+$env:HF_HOME = $CacheDirectory
+try {
+    foreach ($Repository in $Packages) {
+        $DirectoryName = ConvertTo-HuggingFaceDirectoryName -Repository $Repository
+        $OutputDirectory = Join-Path $DestinationDirectory $DirectoryName
+        Save-HuggingFaceRepository -Repository $Repository -OutputDirectory $OutputDirectory
+    }
+}
+finally {
+    $env:HF_HOME = $PreviousHfHome
 }

@@ -245,9 +245,18 @@ scripts/
 ### Download-Difypkg.ps1
 ### Download-Nextcloud.ps1
 ### Download-Docling.ps1
+
+- Hugging Faceのcacheは`OutputDir/.hf-cache`へ作成し、user profileのcacheを使用しない。
+
 ### Download-HFRepo.ps1
+
+- Hugging Faceのcacheは`OutputDir/.hf-cache`へ作成し、user profileのcacheを使用しない。
+
 ### Download-RPM.ps1
 ### Download-DEB.ps1
+
+- Packages metadataの一時fileは`OutputDir`と同じvolumeへ作成し、user profileの一時directoryを使用しない。
+
 ### Download-VSIX.ps1
 ### Download-DockerImages.ps1
 ### Download-LibreTranslate.ps1
@@ -259,6 +268,7 @@ scripts/
 ### Download-PipPkgs.ps1
 
 - script内の`$Packages`に定義されたPython packageをダウンロードする.
+- pip cacheを無効化し、一時directoryは`OutputDir`と同じvolumeへ作成する.
 - 以下の組み合わせのパッケージをダウンロードする.
   - PythonVersion；
     - 3.12
@@ -291,10 +301,12 @@ scripts/
 ### Download-PipPkgs-from-Project.ps1
 
 - 任意projectの`pyproject.toml`または`requirements.txt`からPython packageをダウンロードする補助script.
+- pip cacheを無効化し、一時requirements fileとdownload directoryは`OutputDir`と同じvolumeへ作成する.
 
 ### Download-NpmPkgs-from-Project.ps1
 
 - 任意projectの`package.json`からnpm packageをダウンロードする補助script.
+- npm cache、作業directory、一時parserは`OutputDir`と同じvolumeへ作成し、user profileのcacheと一時directoryを使用しない。
 
 ## References
 

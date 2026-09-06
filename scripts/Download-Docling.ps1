@@ -19,6 +19,7 @@ Docling資材を`C:\airgap\docling`へ取得します。
 
 .NOTES
 副作用として指定directory配下へfileを作成または上書きします。
+Hugging Faceのcacheは`OutputDir/.hf-cache`を使用し、user profileのcacheを使用しません。
 実行にはPowerShell、hf、internet接続が必要です。
 #>
 [CmdletBinding()]
@@ -36,6 +37,7 @@ if (-not $OutputDir) {
 }
 
 $ErrorActionPreference = "Stop"
+$OutputRoot = [System.IO.Path]::GetFullPath($OutputDir)
 $Registries = @(
     "https://huggingface.co",
     "https://raw.githubusercontent.com/tesseract-ocr/tessdata_best"
@@ -215,17 +217,26 @@ if ($DoclingHuggingFaceRepositories.Count -gt 0) {
     Assert-CommandAvailable -Name "hf"
 }
 
-$DoclingDirectory = Join-Path ([System.IO.Path]::GetFullPath($OutputDir)) "docling"
+$DoclingDirectory = Join-Path $OutputRoot "docling"
+$HuggingFaceCacheDirectory = Join-Path $OutputRoot ".hf-cache"
 $TessdataDirectory = Join-Path $DoclingDirectory "tesseract"
 
 New-Item -ItemType Directory -Path $DoclingDirectory -Force | Out-Null
+New-Item -ItemType Directory -Path $HuggingFaceCacheDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $TessdataDirectory -Force | Out-Null
 
-foreach ($Repository in $DoclingHuggingFaceRepositories) {
-    $DirectoryName = ConvertTo-HuggingFaceDirectoryName -Repository $Repository.Name
-    Save-HuggingFaceRepository `
-        -Repository $Repository `
-        -OutputDirectory (Join-Path $DoclingDirectory $DirectoryName)
+$PreviousHfHome = $env:HF_HOME
+$env:HF_HOME = $HuggingFaceCacheDirectory
+try {
+    foreach ($Repository in $DoclingHuggingFaceRepositories) {
+        $DirectoryName = ConvertTo-HuggingFaceDirectoryName -Repository $Repository.Name
+        Save-HuggingFaceRepository `
+            -Repository $Repository `
+            -OutputDirectory (Join-Path $DoclingDirectory $DirectoryName)
+    }
+}
+finally {
+    $env:HF_HOME = $PreviousHfHome
 }
 
 foreach ($Asset in $TessdataAssets) {

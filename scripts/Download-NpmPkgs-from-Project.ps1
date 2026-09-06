@@ -26,7 +26,7 @@ scriptのhelpを表示して終了します。
 指定したproject directoryのpackage.jsonからregistry投入用`.tgz`を作成します。
 
 .NOTES
-対象project directoryではfileを作成しません。作業fileは一時directoryへ作成し、成果物だけをOutputDirへ保存します。
+対象project directoryではfileを作成しません。作業directory、parser、npm cacheはOutputDirと同じvolumeへ作成し、処理終了時に削除します。
 #>
 [CmdletBinding()]
 param (
@@ -129,13 +129,16 @@ package-lock.jsonからtarget platform向けpackage specを取得します。
 package-lock.jsonのpathです。
 .PARAMETER Platform
 target platform情報です。
+.PARAMETER ParserDirectory
+一時parserを作成するdirectoryです。
 .OUTPUTS
 `name@version`形式のpackage spec配列を返します。
 #>
 function Get-PackageSpecsFromPackageLock {
     param(
         [Parameter(Mandatory = $true)][string]$LockFile,
-        [Parameter(Mandatory = $true)][pscustomobject]$Platform
+        [Parameter(Mandatory = $true)][pscustomobject]$Platform,
+        [Parameter(Mandatory = $true)][string]$ParserDirectory
     )
 
     $Code = @'
@@ -162,7 +165,7 @@ for (const [packagePath, packageInfo] of Object.entries(lock.packages || {})) {
   }
 }
 '@
-    $ParserScript = Join-Path ([System.IO.Path]::GetTempPath()) "npm-lock-parser-$([guid]::NewGuid().ToString("N")).js"
+    $ParserScript = Join-Path $ParserDirectory "npm-lock-parser-$([guid]::NewGuid().ToString("N")).js"
     try {
         $Code | Set-Content -LiteralPath $ParserScript -Encoding ascii
         $Specs = Invoke-NativeCommand -FilePath "node" -Arguments @($ParserScript, $LockFile, $Platform.Os, $Platform.Cpu)
@@ -193,31 +196,37 @@ if ($Packages.Count -eq 0) {
     throw "取得するnpm packageが指定されていません。"
 }
 
-$OutputDir = Join-Path ([System.IO.Path]::GetFullPath($OutputDir)) "npm"
+$OutputRoot = [System.IO.Path]::GetFullPath($OutputDir)
+$OutputDir = Join-Path $OutputRoot "npm"
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
-$WorkDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "npm-download-$([guid]::NewGuid().ToString("N"))"
+$WorkDirectory = Join-Path $OutputRoot ".npm-download-$([guid]::NewGuid().ToString("N"))"
+$CacheDirectory = Join-Path $WorkDirectory "cache"
 $AllPackageSpecs = @()
 try {
-    New-Item -ItemType Directory -Path $WorkDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $CacheDirectory -Force | Out-Null
     foreach ($Platform in $Platforms) {
         $PlatformWorkDirectory = Join-Path $WorkDirectory $Platform.Name
         New-Item -ItemType Directory -Path $PlatformWorkDirectory -Force | Out-Null
 
         Push-Location $PlatformWorkDirectory
         try {
-            Invoke-NativeCommand -FilePath "npm" -Arguments @("init", "-y") | Out-Null
+            Invoke-NativeCommand -FilePath "npm" -Arguments @("init", "-y", "--cache=$CacheDirectory") | Out-Null
             $InstallArguments = @(
                 "install",
                 "--package-lock-only",
                 "--ignore-scripts",
                 "--registry=$($Registries[0])",
+                "--cache=$CacheDirectory",
                 "--os=$($Platform.Os)",
                 "--cpu=$($Platform.Cpu)"
             ) + $Packages
             Write-Host "Resolve npm packages: platform=$($Platform.Name) packages=$($Packages.Count)"
             Invoke-NativeCommand -FilePath "npm" -Arguments $InstallArguments
-            $AllPackageSpecs += Get-PackageSpecsFromPackageLock -LockFile (Join-Path $PlatformWorkDirectory "package-lock.json") -Platform $Platform
+            $AllPackageSpecs += Get-PackageSpecsFromPackageLock `
+                -LockFile (Join-Path $PlatformWorkDirectory "package-lock.json") `
+                -Platform $Platform `
+                -ParserDirectory $WorkDirectory
         } finally {
             Pop-Location
         }
@@ -226,7 +235,7 @@ try {
     Push-Location $WorkDirectory
     try {
         foreach ($PackageSpec in @($AllPackageSpecs | Sort-Object -Unique)) {
-            Invoke-NativeCommand -FilePath "npm" -Arguments @("pack", $PackageSpec, "--pack-destination", $OutputDir, "--registry=$($Registries[0])", "--silent")
+            Invoke-NativeCommand -FilePath "npm" -Arguments @("pack", $PackageSpec, "--pack-destination", $OutputDir, "--registry=$($Registries[0])", "--cache=$CacheDirectory", "--silent")
         }
     } finally {
         Pop-Location

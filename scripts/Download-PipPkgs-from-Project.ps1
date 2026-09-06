@@ -26,7 +26,7 @@ scriptのhelpを表示して終了します。
 指定したproject directoryのPython依存からregistry投入用wheelhouseを作成します。
 
 .NOTES
-対象project directoryは変更しません。作業fileを一時directoryへ生成し、指定directoryへpackage archiveを作成または上書きします。
+対象project directoryは変更しません。作業fileはOutputDirと同じvolumeへ生成し、pip cacheを使用せずにpackage archiveを作成または上書きします。
 #>
 [CmdletBinding()]
 param (
@@ -49,6 +49,7 @@ if (-not $ProjectDir) {
 }
 
 $ErrorActionPreference = "Stop"
+$OutputRoot = [System.IO.Path]::GetFullPath($OutputDir)
 $PythonVersions = @("3.12", "3.13", "3.14", "3.15")
 $Registries = @(
     "https://pypi.org/simple",
@@ -146,7 +147,7 @@ function Resolve-RequirementsPath {
     $RequirementsPath = Join-Path $ProjectDirectory "requirements.txt"
     $PyprojectPath = Join-Path $ProjectDirectory "pyproject.toml"
     if (Test-Path -Path $PyprojectPath -PathType Leaf) {
-        $RequirementsPath = Join-Path ([System.IO.Path]::GetTempPath()) "requirements-$([guid]::NewGuid().ToString("N")).txt"
+        $RequirementsPath = Join-Path $OutputRoot ".requirements-$([guid]::NewGuid().ToString("N")).txt"
         $Arguments = @(
             "export",
             "--project", $ProjectDirectory,
@@ -361,7 +362,7 @@ function Save-RequirementForTarget {
         [Parameter(Mandatory = $true)][string]$OutputDir
     )
 
-    $AttemptDir = Join-Path ([System.IO.Path]::GetTempPath()) "pip-download-$([guid]::NewGuid().ToString("N"))"
+    $AttemptDir = Join-Path $OutputRoot ".pip-download-$([guid]::NewGuid().ToString("N"))"
     New-Item -ItemType Directory -Path $AttemptDir -Force | Out-Null
     try {
         $DownloadRequirement = ($Requirement -split ";", 2)[0].Trim()
@@ -374,6 +375,7 @@ function Save-RequirementForTarget {
             "-m",
             "pip",
             "download",
+            "--no-cache-dir",
             "--dest", $AttemptDir
         ) + $IndexArguments + @("--no-deps") + (Get-PipTargetArguments -Target $Target -PythonVersion $PythonVersion) + @($DownloadRequirement)
 
@@ -466,7 +468,7 @@ if ($Packages.Count -eq 0) {
     throw "requirements.txtにdownload対象packageがありません: $RequirementsPath"
 }
 
-$OutputDir = Join-Path ([System.IO.Path]::GetFullPath($OutputDir)) "pypi"
+$OutputDir = Join-Path $OutputRoot "pypi"
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
 $PythonCommand = Get-PythonCommand

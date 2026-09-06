@@ -6,10 +6,17 @@ if (-not (Test-Python3Command)) {
 }
 
 $OutputDir = New-DownloadTestDirectory -Name "pip"
+$UserCacheDir = Join-Path $OutputDir "user-cache"
+$PreviousCache = $env:PIP_CACHE_DIR
 try {
+    $env:PIP_CACHE_DIR = $UserCacheDir
     Invoke-DownloadTestScript -ScriptName "Download-PipPkgs.ps1" -OutputDir $OutputDir
     Assert-DownloadTestArtifacts -Directory (Join-Path $OutputDir "pypi") -Pattern @("*.whl", "*.tar.gz", "*.zip")
+    if (Test-Path -LiteralPath $UserCacheDir) {
+        throw "user pip cacheが使用されました: $UserCacheDir"
+    }
 }
 finally {
+    $env:PIP_CACHE_DIR = $PreviousCache
     Remove-DownloadTestDirectory -Path $OutputDir
 }

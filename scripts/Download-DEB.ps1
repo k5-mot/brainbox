@@ -21,6 +21,8 @@ scriptのhelpを表示して終了します。
 .NOTES
 副作用として指定directoryへ`.deb` fileを作成または上書きします。
 
+Packages metadataの一時fileは`OutputDir`配下に作成し、user profileの一時directoryは使用しません。
+
 実行にはPowerShellと外部repositoryへのHTTP接続が必要です。
 
 Save-DebPackagesWithDependenciesのPackagesUrl parameterは、
@@ -41,6 +43,7 @@ if (-not $OutputDir) {
 }
 
 $ErrorActionPreference = "Stop"
+$OutputRoot = [System.IO.Path]::GetFullPath($OutputDir)
 $Packages = @(
         "bash",
         "zsh",
@@ -141,6 +144,8 @@ function Save-FileFromUrl {
 gzip圧縮されたtext fileをHTTPで取得して展開します。
 .PARAMETER Url
 gzip fileの取得元URLです。
+.PARAMETER TemporaryDirectory
+gzip fileを一時保存するdirectoryです。
 .OUTPUTS
 展開済みtextを返します。
 .NOTES
@@ -148,13 +153,15 @@ gzip fileの取得元URLです。
 #>
 function Read-GzipTextFromUrl {
     param(
-        [Parameter(Mandatory = $true)][string]$Url
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$TemporaryDirectory
     )
 
-    $TempFile = New-TemporaryFile
+    New-Item -ItemType Directory -Force -Path $TemporaryDirectory | Out-Null
+    $TempPath = Join-Path $TemporaryDirectory ".deb-packages-$([guid]::NewGuid().ToString('N')).gz"
     try {
-        Save-FileFromUrl -Url $Url -OutputPath $TempFile.FullName
-        $InputStream = [System.IO.File]::OpenRead($TempFile.FullName)
+        Save-FileFromUrl -Url $Url -OutputPath $TempPath
+        $InputStream = [System.IO.File]::OpenRead($TempPath)
         try {
             $GzipStream = [System.IO.Compression.GzipStream]::new($InputStream, [System.IO.Compression.CompressionMode]::Decompress)
             try {
@@ -171,7 +178,7 @@ function Read-GzipTextFromUrl {
             $InputStream.Dispose()
         }
     } finally {
-        Remove-Item -Force $TempFile.FullName
+        Remove-Item -Force -ErrorAction SilentlyContinue $TempPath
     }
 }
 
@@ -180,16 +187,19 @@ function Read-GzipTextFromUrl {
 Debian Packages metadataをpackage名で引けるindexへ変換します。
 .PARAMETER PackagesUrl
 Packages.gzのURLです。
+.PARAMETER TemporaryDirectory
+Packages.gzを一時保存するdirectoryです。
 .OUTPUTS
 package名をkey、metadata hashtableをvalueにしたhashtableを返します。
 #>
 function Get-DebPackageIndex {
     param(
-        [Parameter(Mandatory = $true)][string]$PackagesUrl
+        [Parameter(Mandatory = $true)][string]$PackagesUrl,
+        [Parameter(Mandatory = $true)][string]$TemporaryDirectory
     )
 
     $Index = @{}
-    $Text = Read-GzipTextFromUrl -Url $PackagesUrl
+    $Text = Read-GzipTextFromUrl -Url $PackagesUrl -TemporaryDirectory $TemporaryDirectory
     foreach ($Entry in ($Text -split "(?:`r?`n){2,}")) {
         if ([string]::IsNullOrWhiteSpace($Entry)) {
             continue
@@ -256,6 +266,8 @@ Debian repository rootのURLです。
 Packages.gzのURLです。
 .PARAMETER OutputDirectory
 deb fileの保存先directoryです。
+.PARAMETER TemporaryDirectory
+Packages.gzを一時保存するdirectoryです。
 .OUTPUTS
 値は返しません。
 #>
@@ -264,7 +276,8 @@ function Save-DebPackagesWithDependencies {
         [Parameter(Mandatory = $true)][string[]]$PackageNames,
         [Parameter(Mandatory = $true)][string]$RepositoryBaseUrl,
         [Parameter(Mandatory = $true)][string[]]$PackagesUrl,
-        [Parameter(Mandatory = $true)][string]$OutputDirectory
+        [Parameter(Mandatory = $true)][string]$OutputDirectory,
+        [Parameter(Mandatory = $true)][string]$TemporaryDirectory
     )
 
     if ($PackageNames.Count -eq 0) {
@@ -273,7 +286,7 @@ function Save-DebPackagesWithDependencies {
 
     $Index = @{}
     foreach ($Url in $PackagesUrl) {
-        $PartialIndex = Get-DebPackageIndex -PackagesUrl $Url
+        $PartialIndex = Get-DebPackageIndex -PackagesUrl $Url -TemporaryDirectory $TemporaryDirectory
         foreach ($Name in $PartialIndex.Keys) {
             if (-not $Index.ContainsKey($Name)) {
                 $Index[$Name] = $PartialIndex[$Name]
@@ -341,7 +354,7 @@ function Assert-AssetFilesExist {
     }
 }
 
-$DestinationDirectory = Join-Path ([System.IO.Path]::GetFullPath($OutputDir)) "deb"
+$DestinationDirectory = Join-Path $OutputRoot "deb"
 
 New-Item `
     -ItemType Directory `
@@ -371,7 +384,8 @@ foreach ($Registry in $Registries) {
         -PackageNames $Packages `
         -PackagesUrl $PackagesUrls `
         -RepositoryBaseUrl $Registry.BaseUrl `
-        -OutputDirectory $DestinationDirectory
+        -OutputDirectory $DestinationDirectory `
+        -TemporaryDirectory $OutputRoot
 }
 
 Assert-AssetFilesExist `

@@ -1,32 +1,22 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  InferLabはDocker Composeで構成する閉域対応のAIサービス群です。
+  事前取得scriptはPowerShellで実行し、Docker commandに依存せず、OutputDirに閉域持ち込み資材を作成します。
+  user profileが容量制限付きnetwork driveである環境を考慮します。
+  コードと文書はAGENTS.mdとdocs/rules配下のルールに従います。
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  specs:
+    - 要件とscenarioは日本語で記載する
+    - 実装対象のscript名と観測可能な期待結果を明記する
+  tasks:
+    - 実装、自動検証、実downloadにるsmoke testを分けて記載する
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+operations:
+  apply:
+    guidance:
+      - user profileの容量制限に影響するcacheと一時fileの保存先を検証する
+  archive:
+    guidance:
+      - 現行specと実装の一致をstrict validationで確認する
