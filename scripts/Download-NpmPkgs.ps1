@@ -12,6 +12,9 @@ scriptのhelpを表示して終了します。
 .\scripts\Download-NpmPkgs.ps1 -OutputDir C:\airgap
 
 script内のpackage listからnpm packageを`C:\airgap\npm`へ取得します。
+
+.NOTES
+npm cacheと一時fileはOutputDirと同じvolumeへ作成し、処理終了時に削除します。
 #>
 [CmdletBinding()]
 param (
@@ -269,13 +272,15 @@ if ($InstallPackages.Count -eq 0) {
     throw "取得するnpm packageが指定されていません。"
 }
 
-$OutputDir = Join-Path ([System.IO.Path]::GetFullPath($OutputDir)) "npm"
+$OutputRoot = [System.IO.Path]::GetFullPath($OutputDir)
+$OutputDir = Join-Path $OutputRoot "npm"
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
-$WorkDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "npm-download-$([guid]::NewGuid().ToString("N"))"
+$WorkDirectory = Join-Path $OutputRoot ".npm-download-$([guid]::NewGuid().ToString("N"))"
+$CacheDirectory = Join-Path $WorkDirectory "cache"
 $AllPackageSpecs = @()
 try {
-    New-Item -ItemType Directory -Path $WorkDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $CacheDirectory -Force | Out-Null
     foreach ($Platform in $Platforms) {
         $PlatformWorkDirectory = Join-Path $WorkDirectory $Platform.Name
         New-Item -ItemType Directory -Path $PlatformWorkDirectory -Force | Out-Null
@@ -288,6 +293,7 @@ try {
                 "--package-lock-only",
                 "--ignore-scripts",
                 "--registry=$($Registries[0])",
+                "--cache=$CacheDirectory",
                 "--os=$($Platform.Os)",
                 "--cpu=$($Platform.Cpu)"
             ) + $InstallPackages
@@ -302,7 +308,7 @@ try {
     Push-Location $WorkDirectory
     try {
         foreach ($PackageSpec in @($AllPackageSpecs | Sort-Object -Unique)) {
-            Invoke-NativeCommand -FilePath "npm" -Arguments @("pack", $PackageSpec, "--pack-destination", $OutputDir, "--registry=$($Registries[0])", "--silent")
+            Invoke-NativeCommand -FilePath "npm" -Arguments @("pack", $PackageSpec, "--pack-destination", $OutputDir, "--registry=$($Registries[0])", "--cache=$CacheDirectory", "--silent")
         }
     } finally {
         Pop-Location
