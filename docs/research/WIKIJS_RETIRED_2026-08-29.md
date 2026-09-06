@@ -35,7 +35,7 @@ Wiki.jsのDBへ直接認証設定を投入する方法は、この手順の対�
 
 ## Repositoryの現状と事前条件
 
-Wiki.jsとPostgreSQLのimage、port、DB接続は[Wiki.js Compose定義](../../37-wikijs/docker-compose.yml)にある。Keycloakは[Keycloak Compose定義](../../01-keycloak/docker-compose.yml)により`prod` realmを作成し、[Keycloak宣言設定](../../01-keycloak/keycloak/config.yaml)を同期する。
+Wiki.jsとPostgreSQLのimage、port、DB接続は[削除前のWiki.js Compose定義](https://github.com/k5-mot/inferlab/blob/13dc656208b3fef5ee9b779ed954198a08a2c662/37-wikijs/docker-compose.yml)にある。Keycloakは[Keycloak Compose定義](https://github.com/k5-mot/inferlab/blob/main/01-keycloak/docker-compose.yml)により`prod` realmを作成し、[Keycloak宣言設定](https://github.com/k5-mot/inferlab/blob/main/01-keycloak/keycloak/config.yaml)を同期する。
 
 2026-08-21時点のKeycloak宣言設定には`wikijs` clientがない。そのままでは連携できないため、本手順ではsetup後にKeycloak管理consoleでclientを作成する。clientを宣言管理へ移す場合は、strategy UUIDを確定した後に、少なくともclient ID、client secret、厳密なredirect URI、Web OriginをKeycloak宣言設定へ反映する。
 
@@ -355,6 +355,6 @@ sudo docker compose --env-file .env --profile wikijs up -d
 - [Wiki.js v2.5.314 user profile processing source](https://github.com/requarks/wiki/blob/v2.5.314/server/models/users.js)
 - [Keycloak Server Administration Guide](https://www.keycloak.org/docs/latest/server_admin/)
 - [Keycloak OpenID Connect endpoints](https://www.keycloak.org/securing-apps/oidc-layers)
-- [Wiki.js Compose定義](../../37-wikijs/docker-compose.yml)
-- [Keycloak Compose定義](../../01-keycloak/docker-compose.yml)
-- [Keycloak宣言設定](../../01-keycloak/keycloak/config.yaml)
+- [削除前のWiki.js Compose定義](https://github.com/k5-mot/inferlab/blob/13dc656208b3fef5ee9b779ed954198a08a2c662/37-wikijs/docker-compose.yml)
+- [Keycloak Compose定義](https://github.com/k5-mot/inferlab/blob/main/01-keycloak/docker-compose.yml)
+- [Keycloak宣言設定](https://github.com/k5-mot/inferlab/blob/main/01-keycloak/keycloak/config.yaml)

@@ -14,7 +14,7 @@ const config: Config = {
   url: deploymentUrl.origin,
   baseUrl,
   trailingSlash: true,
-  onBrokenLinks: 'warn',
+  onBrokenLinks: 'throw',
   onBrokenAnchors: 'throw',
   organizationName: 'k5-mot',
   projectName: 'inferlab',

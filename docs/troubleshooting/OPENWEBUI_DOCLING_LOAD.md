@@ -42,7 +42,7 @@ OpenWebUIへfileをuploadし、Doclingによる文書変換と画像説明を実
 
 ## References
 
-- [OpenWebUIとDoclingのCompose設定](../../20-owui/docker-compose.yml)
-- [Docling full parameter](../../20-owui/open-webui/docling_params_full.json)
-- [Docling slim parameter](../../20-owui/open-webui/docling_params_slim.json)
+- [OpenWebUIとDoclingのCompose設定](https://github.com/k5-mot/inferlab/blob/main/20-owui/docker-compose.yml)
+- [Docling full parameter](https://github.com/k5-mot/inferlab/blob/main/20-owui/open-webui/docling_params_full.json)
+- [Docling slim parameter](https://github.com/k5-mot/inferlab/blob/main/20-owui/open-webui/docling_params_slim.json)
 - [TEI起動時のhost resource枯渇](TEI_RESOURCE_EXHAUSTION.md)
