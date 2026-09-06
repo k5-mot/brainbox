@@ -1,2 +1,6 @@
+packages:
+  - docs-site
+
 allowBuilds:
   '@fission-ai/openspec': true
+  core-js: false
