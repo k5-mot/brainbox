@@ -59,6 +59,14 @@ services:
         condition: service_healthy
     mem_limit: 2g
     pids_limit: 512
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -r /proc/1/cmdline && grep -q 'dist/main.js' /proc/1/cmdline
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     labels:
       - homepage.group=41-llmwiki
       - homepage.name=LLM Wiki

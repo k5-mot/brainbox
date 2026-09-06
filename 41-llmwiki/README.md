@@ -156,14 +156,14 @@ docker compose exec -w /data/llmwiki llmwiki llmwiki status
 
 期待結果:
 
-- `llmwiki` containerがhealthyになり、`llmwiki-ingester` containerがrunningになる。
+- `llmwiki`と`llmwiki-ingester`の両containerがhealthyになる。
 - `http://localhost:34100` で upstream viewer を表示できる。
 - IngesterへCouchDB同期とcompileのscheduled jobが登録される。
 
 失敗基準:
 
 - config schema、cron、timezone、必要credentialが不正な場合、該当containerは起動に失敗する。
-- viewer または proxy が起動できない場合、container は healthy にならない。
+- viewer、proxy、またはIngester schedulerが起動できない場合、該当containerはhealthyにならない。
 
 ## MCP
 
