@@ -98,6 +98,21 @@ services:
               "name": "llmwiki",
               "description": "Repository knowledge tools provided by llmwiki through mcpo."
             }
+          },
+          {
+            "type": "openapi",
+            "url": "http://libretranslate:5000",
+            "spec_type": "url",
+            "spec": "",
+            "path": "spec",
+            "auth_type": "none",
+            "key": "",
+            "config": { "enable": true },
+            "info": {
+              "id": "libretranslate",
+              "name": "LibreTranslate",
+              "description": "Self-hosted machine translation API."
+            }
           }
         ]
       ### For Keycloak
@@ -226,6 +241,8 @@ services:
     networks:
       - internal-nw
     depends_on:
+      libretranslate:
+        condition: service_healthy
       # docling:
       #   condition: service_started
       searxng:

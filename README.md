@@ -4,7 +4,7 @@
 
 ### Profile一覧
 
-`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`owui`、`nextcloud`、`obsidian`、`o11y`、`langfuse` です。`registry`、`dify`、`ragflow`、`cloudflareos`、`xwiki`、`wikijs`、`kaneo`、`zulip`、`gitlab`、`llmwiki` などのその他の profile は必要な場合に個別に指定します。
+`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`owui`、`nextcloud`、`obsidian`、`o11y`、`langfuse` です。`registry`、`translate`、`dify`、`ragflow`、`cloudflareos`、`xwiki`、`wikijs`、`kaneo`、`zulip`、`gitlab`、`llmwiki` などのその他の profile は必要な場合に個別に指定します。
 
 | Profile | Compose file | 用途 |
 | --- | --- | --- |
@@ -14,6 +14,7 @@
 | `inference` | `10-inference/docker-compose.yml` | 推論、埋め込み、エージェント、音声合成 |
 | `rag` | `11-rag/docker-compose.yml` | 文書処理とベクトル検索 |
 | `registry` | `12-registry/docker-compose.yml` | 開発用パッケージ配布 |
+| `translate` | `13-translate/docker-compose.yml` | 機械翻訳API |
 | `owui` | `20-owui/docker-compose.yml` | Open WebUI、検索、ツール連携、Knowledge同期 |
 | `dify` | `21-dify/docker-compose.yml` | 自動化 |
 | `ragflow` | `22-ragflow/docker-compose.yml` | RAGとAgent platform |
@@ -62,6 +63,7 @@
 | `registry` | `reprepro` | - | `12-registry/docker-compose.yml` |
 | `registry` | `deb-dist` | `31204` | `12-registry/docker-compose.yml` |
 | `registry` | `docker-registry` | `31205` | `12-registry/docker-compose.yml` |
+| `translate`, `owui` | `libretranslate` | `31300` | `13-translate/docker-compose.yml` |
 | `owui` | `open-webui` | `32000` | `20-owui/docker-compose.yml` |
 | `owui` | `open-terminal` | `32003` | `20-owui/docker-compose.yml` |
 | `owui` | `mcpo` | `32004` | `20-owui/docker-compose.yml` |

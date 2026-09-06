@@ -230,6 +230,7 @@ verify_compose_config() {
     inference
     rag
     registry
+    translate
     owui
     dify
     ragflow

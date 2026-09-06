@@ -7,6 +7,7 @@ include:
   - ./10-inference/docker-compose.yml
   - ./11-rag/docker-compose.yml
   - ./12-registry/docker-compose.yml
+  - ./13-translate/docker-compose.yml
   - ./20-owui/docker-compose.yml
   - ./21-dify/docker-compose.yml
   - ./22-ragflow/docker-compose.yml
