@@ -34,6 +34,7 @@ $DownloadScripts = @(
     "Download-DEB.ps1",
     "Download-VSIX.ps1",
     "Download-DockerImages.ps1",
+    "Download-LibreTranslate.ps1",
     "Download-PipPkgs.ps1",
     "Download-NpmPkgs.ps1"
 )
@@ -46,7 +47,7 @@ foreach ($Script in $DownloadScripts) {
 
 期待結果:
 
-- `/srv/`配下に`dify`、`nextcloud`、`docling`、`hfrepo`、`rpm`、`deb`、`vscode`、`docker`、`pypi`、`npm`が作成される。
+- `/srv/`配下に`dify`、`nextcloud`、`docling`、`libretranslate`、`hfrepo`、`rpm`、`deb`、`vscode`、`docker`、`pypi`、`npm`が作成される。
 - Dify plugin、Nextcloud app、Tesseract traineddataのchecksum検証が成功する。
 - PyPI packageの対象versionとplatformについて、wheelまたは利用可能なsource archiveが取得される。
 - Composeが参照するregistry imageが`docker/*.tar`として保存される。
@@ -72,7 +73,7 @@ Get-Content SHA256SUMS | ForEach-Object {
 Pop-Location
 
 # 種別ごとの資材件数を表示する。
-$AssetDirectories = @("dify", "nextcloud", "docling", "hfrepo", "rpm", "deb", "vscode", "docker", "pypi", "npm")
+$AssetDirectories = @("dify", "nextcloud", "docling", "libretranslate", "hfrepo", "rpm", "deb", "vscode", "docker", "pypi", "npm")
 $AssetDirectories |
     ForEach-Object {
         $Directory = Get-Item (Join-Path "/srv" $_)
@@ -86,7 +87,7 @@ $AssetDirectories |
 期待結果:
 
 - checksum検証がerrorなく完了する。
-- 10個の出力directoryが存在し、各directoryのfile件数が1以上になる。
+- 11個の出力directoryが存在し、各directoryのfile件数が1以上になる。
 
 失敗条件:
 
@@ -97,7 +98,7 @@ $AssetDirectories |
 
 ```powershell
 # OutputDir直下の取得資材を承認済みの閉域転送経路でair-gap serverへ転送する。
-scp -r /srv/dify /srv/nextcloud /srv/docling /srv/hfrepo /srv/rpm /srv/deb /srv/vscode /srv/docker /srv/pypi /srv/npm <AIRGAP_USER>@<AIRGAP_HOST>:/srv/
+scp -r /srv/dify /srv/nextcloud /srv/docling /srv/libretranslate /srv/hfrepo /srv/rpm /srv/deb /srv/vscode /srv/docker /srv/pypi /srv/npm <AIRGAP_USER>@<AIRGAP_HOST>:/srv/
 ```
 
 期待結果:
@@ -128,11 +129,12 @@ sudo cp -a /srv/deb/. /srv/12-registry/deb/
 sudo cp -a /srv/vscode/. /srv/12-registry/vsix/
 ```
 
-`/srv/docling`はDoclingがbind mountする取得先をそのまま使用する。`/srv/npm/*.tgz`も配置変更せず、llmwiki Offline版のBuildKit named contextとVerdaccioの`npm-importer`の両方からread-onlyで参照する。llmwikiのOffline Docker buildはVerdaccioを経由しない。`/srv/docker/*.tar`のcontainer engineへのloadは環境運用者が実施する。
+`/srv/docling`と`/srv/libretranslate`は各serviceがbind mountする取得先をそのまま使用する。`/srv/npm/*.tgz`も配置変更せず、llmwiki Offline版のBuildKit named contextとVerdaccioの`npm-importer`の両方からread-onlyで参照する。llmwikiのOffline Docker buildはVerdaccioを経由しない。`/srv/docker/*.tar`のcontainer engineへのloadは環境運用者が実施する。
 
 期待結果:
 
 - 各serviceのbind mount元に必要な資材が配置される。
+- `/srv/libretranslate`に英語・日本語のArgos Translate modelとMiniSBD modelが配置される。
 - `/srv/npm`がnpm packageの共通bind mount元とllmwiki Offline build入力として保持される。
 - `/srv/docker/*.tar`が環境運用者によるimage load用の入力資材として保持される。
 
