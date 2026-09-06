@@ -14,7 +14,7 @@ services:
     environment:
       AIONUI_ALLOW_REMOTE: "true"
       AIONUI_DATA_DIR: /data
-      AIONUI_LITELLM_API_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY is required}
+      AIONUI_LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key}
       AIONUI_LITELLM_BASE_URL: http://litellm:4000/v1
       AIONUI_LITELLM_MODEL: ${AION_MODEL:-google/gemma4:31b}
       AIONUI_LOG_DIR: /data/logs
