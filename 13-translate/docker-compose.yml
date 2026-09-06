@@ -9,12 +9,23 @@ services:
     environment:
       LT_API_KEYS: "false"
       LT_DISABLE_WEB_UI: "true"
-      LT_LOAD_ONLY: ${LIBRETRANSLATE_LOAD_ONLY:-en,ja}
-      LT_UPDATE_MODELS: "true"
+      LT_LOAD_ONLY: en,ja
+      LT_UPDATE_MODELS: "false"
+      LT_FORCE_UPDATE_MODELS: "false"
+    # model不足時のonline fallbackを防ぎ、不完全な閉域資材は起動前に検出する。
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        test -f /home/libretranslate/.local/share/argos-translate/packages/en_ja/metadata.json
+        test -f /home/libretranslate/.local/share/argos-translate/packages/ja_en/metadata.json
+        test -f /home/libretranslate/.local/share/argos-translate/minisbd/en.onnx
+        test -f /home/libretranslate/.local/share/argos-translate/minisbd/ja.onnx
+        exec ./scripts/entrypoint.sh
     ports:
       - "31300:5000"
     volumes:
-      - libretranslate-models:/home/libretranslate/.local
+      - /srv/libretranslate:/home/libretranslate/.local/share/argos-translate:ro
     networks:
       - internal-nw
     healthcheck:
@@ -34,9 +45,6 @@ services:
       - homepage.href=http://${PUBLIC_HOST}:31300/docs
       - homepage.description=Machine translation API
       - homepage.icon=/icons/libretranslate.png
-
-volumes:
-  libretranslate-models:
 
 networks:
   internal-nw:

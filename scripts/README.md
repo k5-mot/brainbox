@@ -21,6 +21,7 @@ $DownloadScripts = @(
     "Download-DEB.ps1",
     "Download-VSIX.ps1",
     "Download-DockerImages.ps1",
+    "Download-LibreTranslate.ps1",
     "Download-PipPkgs.ps1",
     "Download-NpmPkgs.ps1"
 )
@@ -70,6 +71,7 @@ scripts/
 ├── Download-DEB.ps1
 ├── Download-VSIX.ps1
 ├── Download-DockerImages.ps1
+├── Download-LibreTranslate.ps1
 ├── Download-PipPkgs.ps1
 ├── Download-NpmPkgs.ps1
 │
@@ -91,6 +93,7 @@ scripts/
    ├── Verify-DEB.ps1
    ├── Verify-VSIX.ps1
    ├── Verify-DockerImages.ps1
+   ├── Verify-LibreTranslate.ps1
    ├── Verify-PipPkgs.ps1
    ├── Verify-NpmPkgs.ps1
    ├── Verify-PipPkgs-from-Project.ps1
@@ -103,6 +106,7 @@ scripts/
    ├── Test-DEB.ps1
    ├── Test-VSIX.ps1
    ├── Test-DockerImages.ps1
+   ├── Test-LibreTranslate.ps1
    ├── Test-PipPkgs.ps1
    ├── Test-NpmPkgs.ps1
    ├── Test-PipPkgs-from-Project.ps1
@@ -113,6 +117,7 @@ scripts/
       ├── dify/
       ├── nextcloud/
       ├── docling/
+      ├── libretranslate/
       ├── hfrepo/
       ├── rpm/
       ├── deb/
@@ -220,6 +225,12 @@ scripts/
 │  ├── *.tar
 │  └── ...
 │
+├── libretranslate/ # Download-LibreTranslate.ps1
+│  ├── archives/
+│  ├── packages/
+│  ├── minisbd/
+│  └── SHA256SUMS
+│
 ├── pypi/           # Download-PipPkgs.ps1
 │  ├── *.whl
 │  └── ...
@@ -239,6 +250,12 @@ scripts/
 ### Download-DEB.ps1
 ### Download-VSIX.ps1
 ### Download-DockerImages.ps1
+### Download-LibreTranslate.ps1
+
+- 英語・日本語のArgos Translate modelとMiniSBD modelをHTTPで取得する.
+- checksum検証後、`libretranslate/`へLibreTranslate 1.9.6が直接読めるdirectory treeを作成する.
+- Docker commandとuser profileのcacheを使用しない.
+
 ### Download-PipPkgs.ps1
 
 - script内の`$Packages`に定義されたPython packageをダウンロードする.
@@ -278,3 +295,9 @@ scripts/
 ### Download-NpmPkgs-from-Project.ps1
 
 - 任意projectの`package.json`からnpm packageをダウンロードする補助script.
+
+## References
+
+- [LibreTranslate 1.9.6 Dockerfile](https://github.com/LibreTranslate/LibreTranslate/blob/v1.9.6/docker/Dockerfile)
+- [Argos Translate Package Index](https://github.com/argosopentech/argospm-index)
+- [MiniSBD v0.0.1](https://github.com/LibreTranslate/MiniSBD/releases/tag/v0.0.1)

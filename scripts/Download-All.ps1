@@ -55,6 +55,7 @@ $DownloadScripts += @(
     "Download-DEB.ps1",
     "Download-VSIX.ps1",
     "Download-DockerImages.ps1",
+    "Download-LibreTranslate.ps1",
     "Download-PipPkgs.ps1",
     "Download-NpmPkgs.ps1"
 )

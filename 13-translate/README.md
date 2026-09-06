@@ -1,11 +1,17 @@
 # 13-translate
 
-LibreTranslate 1.9.6をセルフホストし、HTTP APIをhostのTCP port `31300`へ公開する。既定では英語と日本語のmodelだけを取得し、named volumeへ保存する。対象言語は`LIBRETRANSLATE_LOAD_ONLY`で変更できる。
+LibreTranslate 1.9.6をセルフホストし、HTTP APIをhostのTCP port `31300`へ公開する。英語・日本語の翻訳modelはオンライン端末で事前取得し、air-gap serverの`/srv/libretranslate`からread-onlyでbind mountする。container起動後のmodel downloadは無効化している。
 
 ## Quick Start
 
 ```bash
-# LibreTranslate APIを起動し、初回model取得とhealthcheckの完了を待つ。
+# オンライン端末で英語・日本語の翻訳modelを取得する。
+pwsh -NoProfile -File ./scripts/Download-LibreTranslate.ps1 -OutputDir /srv
+
+# 取得済みmodelのchecksumを検証する。
+cd /srv/libretranslate && sha256sum --check SHA256SUMS
+
+# LibreTranslate APIを起動し、healthcheckの完了を待つ。
 sudo docker compose --env-file .env --profile translate up -d --wait libretranslate
 
 # APIのhealthを確認する。
@@ -43,9 +49,45 @@ curl -fsS -X POST "http://${PUBLIC_HOST:-localhost}:31300/translate" \
 
 失敗条件:
 
-- 初回起動時にmodel配布元へ接続できず、containerがhealthyにならない。
-- `LIBRETRANSLATE_LOAD_ONLY`にない言語を指定し、翻訳要求がerrorになる。
+- `/srv/libretranslate`に英語・日本語modelがなく、起動前検証でcontainerが停止する。
+- 英語・日本語以外の言語を指定し、翻訳要求がerrorになる。
 - hostのTCP port `31300`が別processに使用されている。
+
+## Air-gap配置と検証
+
+`Download-LibreTranslate.ps1`はDocker commandやuser profileのcacheを使用せず、HTTPで取得したmodelを`<OutputDir>/libretranslate`へ展開する。オンライン端末で取得したdirectoryを、閉域側の固定pathへ転送する。
+
+```bash
+# オンライン端末の取得済みmodelをair-gap serverへ転送する。
+scp -r /srv/libretranslate <AIRGAP_USER>@<AIRGAP_HOST>:/srv/
+
+# air-gap serverで取得済みmodelのchecksumを検証する。
+cd /srv/libretranslate && sha256sum --check SHA256SUMS
+
+# localにload済みの公式imageだけを使用し、buildとpullを行わずに起動する。
+sudo docker compose --env-file .env --profile translate up -d --wait --no-build --pull never libretranslate
+
+# 起動logにmodel取得処理が出ていないことを検証する。
+! sudo docker compose --env-file .env --profile translate logs libretranslate \
+  | grep -E "Updating language models|Downloading .+model|Downloading MiniSBD"
+
+# 閉域起動後も翻訳APIが応答することを検証する。
+curl -fsS -X POST "http://${PUBLIC_HOST:-localhost}:31300/translate" \
+  -H "Content-Type: application/json" \
+  -d '{"q":"Hello","source":"en","target":"ja","format":"text"}'
+```
+
+期待結果:
+
+- checksum検証が成功する。
+- `--pull never`かつ外部networkを遮断した状態でもcontainerがhealthyになる。
+- 起動logにmodel更新またはdownloadがなく、翻訳結果が`translatedText`を含む。
+
+失敗条件:
+
+- model archiveまたはMiniSBD modelのchecksumが一致しない。
+- bind mountした4つの必須model fileが不足し、containerが起動しない。
+- 起動後にmodel配布元への接続を試行する。
 
 ## Open WebUI連携
 
@@ -70,20 +112,23 @@ sudo docker compose --env-file .env --profile owui exec open-webui \
 - LibreTranslateがhealthyにならず、Open WebUIが起動待ちになる。
 - Open WebUIの永続設定が環境変数より優先され、tool一覧へ反映されない。
 
-## 停止とmodel再取得
+## 停止とmodel更新
 
 ```bash
 # LibreTranslateを停止する。
 sudo docker compose --env-file .env --profile translate stop libretranslate
 
-# modelを再取得する場合だけ、停止後にmodel volumeを削除する。
-sudo docker volume rm "${STACK_NAME}_libretranslate-models"
+# modelを更新する場合は、オンライン端末で取得scriptを再実行する。
+pwsh -NoProfile -File ./scripts/Download-LibreTranslate.ps1 -OutputDir /srv
 ```
 
-model volumeを削除すると、次回起動時にmodelを再取得する。閉域環境では事前取得済みvolumeを削除してはならない（MUST NOT）。
+閉域側の`/srv/libretranslate`を稼働中に直接更新してはならない（MUST NOT）。別directoryでchecksumを検証し、LibreTranslate停止後にdirectory単位で切り替える。
 
 ## References
 
 - [LibreTranslate Documentation](https://docs.libretranslate.com/)
 - [LibreTranslate API: Translate Text](https://docs.libretranslate.com/api/operations/translate/)
+- [LibreTranslate Dockerfile](https://github.com/LibreTranslate/LibreTranslate/blob/v1.9.6/docker/Dockerfile)
+- [Argos Translate Package Index](https://github.com/argosopentech/argospm-index)
+- [MiniSBD v0.0.1](https://github.com/LibreTranslate/MiniSBD/releases/tag/v0.0.1)
 - [Open WebUI: LibreTranslate Integration](https://docs.openwebui.com/tutorials/integrations/libre-translate/)
