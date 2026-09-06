@@ -1,60 +1,69 @@
-import type {Config} from '@docusaurus/types';
-import type {Options, ThemeConfig} from '@docusaurus/preset-classic';
+import type { Config } from "@docusaurus/types";
+import type { Options, ThemeConfig } from "@docusaurus/preset-classic";
 
 const deploymentUrl = new URL(
-  process.env.DOCUSAURUS_SITE_URL ?? 'http://localhost:3000/',
+  process.env.DOCUSAURUS_SITE_URL ?? "http://localhost:3000/",
 );
-const baseUrl = deploymentUrl.pathname.endsWith('/')
+const baseUrl = deploymentUrl.pathname.endsWith("/")
   ? deploymentUrl.pathname
   : `${deploymentUrl.pathname}/`;
 
 const config: Config = {
-  title: 'InferLab 仕様サイト',
-  tagline: 'OpenSpecを正規本文とするprofile別の現行仕様',
+  title: "InferLab",
+  tagline: "OpenSpecと運用文書",
   url: deploymentUrl.origin,
   baseUrl,
   trailingSlash: true,
-  onBrokenLinks: 'throw',
-  onBrokenAnchors: 'throw',
-  organizationName: 'k5-mot',
-  projectName: 'inferlab',
+  onBrokenLinks: "throw",
+  onBrokenAnchors: "throw",
+  organizationName: "k5-mot",
+  projectName: "inferlab",
   presets: [
     [
-      'classic',
+      "classic",
       {
         docs: {
-          path: '.generated-content',
-          routeBasePath: 'docs',
-          sidebarPath: './sidebars.ts',
+          path: ".generated-content/openspec",
+          routeBasePath: "/",
+          sidebarPath: "./sidebars-openspec.ts",
           showLastUpdateTime: true,
         },
         blog: false,
       } satisfies Options,
     ],
   ],
+  plugins: [
+    [
+      "@docusaurus/plugin-content-docs",
+      {
+        id: "docs",
+        path: ".generated-content/general",
+        routeBasePath: "docs",
+        sidebarPath: "./sidebars-docs.ts",
+        showLastUpdateTime: true,
+      },
+    ],
+  ],
   themeConfig: {
     navbar: {
-      title: 'InferLab 仕様サイト',
       items: [
         {
-          to: '/docs/openspec/specs/shared-platform/spec',
-          label: '現行仕様',
-          position: 'left',
+          type: "docSidebar",
+          sidebarId: "openspecSidebar",
+          label: "OpenSpec",
+          position: "left",
         },
         {
-          to: '/docs/docs/adr/docusaurusによる現行仕様の公開',
-          label: 'ADR',
-          position: 'left',
-        },
-        {
-          href: 'https://github.com/k5-mot/inferlab',
-          label: 'GitHub',
-          position: 'right',
+          type: "docSidebar",
+          sidebarId: "docsSidebar",
+          docsPluginId: "docs",
+          label: "Docs",
+          position: "left",
         },
       ],
     },
     footer: {
-      style: 'dark',
+      style: "dark",
       copyright: `Copyright © ${new Date().getFullYear()} InferLab`,
     },
   } satisfies ThemeConfig,

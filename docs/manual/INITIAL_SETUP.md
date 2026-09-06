@@ -107,7 +107,7 @@ sudo docker compose --env-file .env --profile inference exec ollama ollama list
 ## 5. Dify管理者アカウントを作成する
 
 DifyはDify自身のemail/password認証を使用する。管理者アカウントはDifyの初回セットアップ画面で作成する。
-`DIFY_INIT_PASSWORD`の既定値は`admin`である。productionでは事前に`.env`の値を推測困難な一時passwordへ変更しなければならない（MUST）。air-gap環境では先に[Dify Air-gap Setup](DIFY_AIRGAP.md)の資材取得と検証を完了する。
+[OpenSpecの`dify` profile仕様](/specs/profile-dify/spec)に従い、productionでは`.env`の`DIFY_INIT_PASSWORD`を環境固有の一時passwordへ変更する。air-gap環境では先に[Dify Air-gap Setup](DIFY_AIRGAP.md)の資材取得と検証を完了する。
 
 ```bash
 # Dify profileを起動する。

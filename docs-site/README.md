@@ -1,6 +1,6 @@
 # 仕様サイトのlocal確認
 
-OpenSpecを正規本文とし、ADR、運用文書、調査記録、rule、READMEをDocusaurusでHTML化します。
+OpenSpecを正規本文とし、それ以外のADR、運用文書、調査記録、rule、READMEと分離してDocusaurusでHTML化します。
 
 ## Quick Start
 
@@ -18,7 +18,8 @@ pnpm docs:start
 期待結果:
 
 - `pnpm docs:validate`が`docs-site/build`へ静的siteを生成します。
-- `pnpm docs:start`の表示URLから現行仕様と補足文書を参照できます。
+- site rootに共有platform仕様が表示され、`OpenSpec`と`Docs`の2タブだけから文書を参照できます。
+- `OpenSpec`には`openspec/specs`を、`Docs`には`docs/`と既存READMEを表示します。
 
 失敗条件:
 

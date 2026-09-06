@@ -2,13 +2,11 @@
 
 Dify 1.16.1をInternetへ接続せずに運用するための資材取得、起動、plugin導入、検証手順。
 
+閉域運用のnetwork境界、認証、plugin固定、LiteLLM連携の現行契約は[OpenSpecの`dify` profile仕様](/specs/profile-dify/spec)を正規本文とする。このmanualは、その契約を満たすための実行手順と失敗時の判定だけを扱う。
+
 ## 適用範囲
 
-この構成はDifyの認証をDify自身のemail/password認証に限定する。Dify用の外部Identity Providerは使用しない。
-
-実行時に必要なcontainer image、Dify plugin、pluginのPython依存packageは接続可能な端末で事前取得しなければならない（MUST）。air-gap環境のnetwork境界ではInternet向けegressをdenyしなければならない（MUST）。Compose設定だけをnetwork境界の代替としてはならない（MUST NOT）。
-
-DifyのHTTP node、導入plugin、利用者が指定するURLは内部networkの宛先だけに限定しなければならない（MUST）。この手順は任意のworkflowが指定するURLまで自動制限しない。
+接続可能な端末で資材を取得し、承認済み経路でair-gap環境へ転送し、閉域設定を検証した後にDifyを起動する。
 
 ## 採用plugin
 
@@ -16,7 +14,7 @@ DifyのHTTP node、導入plugin、利用者が指定するURLは内部networkの
 | --- | --- | --- | --- |
 | `langgenius/openai_api_compatible` | `0.0.64` | LLM、Embedding、Rerank、STT、TTS | LiteLLMの内部OpenAI-compatible APIを1つのproviderで利用できるため。 |
 
-provider固有pluginは追加しない。必要なpluginを増やす場合は`21-dify/plugins/plugins.lock.json`へ固定URL、package SHA-256、内包`requirements.txt`のSHA-256を追加し、air-gap移行前に同じ検証を通さなければならない（MUST）。
+provider固有pluginは追加しない。別のpluginを採用する変更では、このmanualのみを変更せず、先に`dify` profile仕様と`21-dify/plugins/plugins.lock.json`を更新する。
 
 ## 接続可能な端末で資材を取得する
 
@@ -81,11 +79,11 @@ cd /srv/21-dify/plugins && sha256sum --check SHA256SUMS
 - checksum不一致または不足fileが1つでもある。
 - Composeが参照するimageをlocal container engineで解決できない。
 
-checksum検証に失敗した資材は使用してはならない（MUST NOT）。接続可能な端末で再取得し、承認済み経路から再転送する。
+checksum検証に失敗した場合は起動へ進まず、接続可能な端末で再取得して承認済み経路から再転送する。
 
 ## Dify用secretを設定する
 
-`.env.sample`を複製し、少なくとも次の値を推測困難な値へ変更する。`DIFY_INIT_PASSWORD`の既定値は`admin`であるが、productionで使用してはならない（MUST NOT）。
+`.env.sample`を複製し、`dify` profile仕様に従って`DIFY_INIT_PASSWORD`とDify関連のsecretを環境固有の値へ変更する。
 
 ```bash
 # Difyの初期セットアップgateで使う一時passwordを生成する。
@@ -191,7 +189,7 @@ sudo docker compose --env-file .env --profile dify exec dify-plugin-daemon sh -c
 | Model Name | `10-inference/litellm/config-litellm.yaml`の対象`model_name` |
 | Completion mode | LLMは`Chat` |
 
-EmbeddingとRerankは同じ内部hostを使う。plugin UIがAPI versionを付加するmodel typeでは、画面の説明に従い末尾`/v1`の重複がないことを確認しなければならない（MUST）。
+6. EmbeddingとRerankにも同じ内部hostを設定し、plugin UIがAPI versionを付加するmodel typeで末尾`/v1`が重複しないことを確認する。
 
 期待結果:
 
@@ -205,7 +203,7 @@ EmbeddingとRerankは同じ内部hostを使う。plugin UIがAPI versionを付�
 - plugin署名検証が失敗する。
 - `pypi.org`への接続失敗またはPython package不足が出る。
 
-rollbackする場合はDify consoleから対象pluginをuninstallする。`/srv/21-dify/plugins`と`/srv/12-registry/pypi`は監査と再導入に必要なため、rollback時に削除してはならない（MUST NOT）。
+rollbackする場合はDify consoleから対象pluginをuninstallし、監査と再導入に使う`/srv/21-dify/plugins`と`/srv/12-registry/pypi`は保持する。
 
 ## References
 

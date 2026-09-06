@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-0002](0002-openspecと補足文書の分離.md)
 
 ## Context
 

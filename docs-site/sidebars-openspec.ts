@@ -1,0 +1,47 @@
+import type { SidebarsConfig } from "@docusaurus/plugin-content-docs";
+
+const profileSpecifications = [
+  "specs/profile-aion/spec",
+  "specs/profile-cloudflareos/spec",
+  "specs/profile-common/spec",
+  "specs/profile-dify/spec",
+  "specs/profile-gitlab/spec",
+  "specs/profile-hermes-agent/spec",
+  "specs/profile-inference/spec",
+  "specs/profile-inference-tei/spec",
+  "specs/profile-kaneo/spec",
+  "specs/profile-keycloak/spec",
+  "specs/profile-langfuse/spec",
+  "specs/profile-llmwiki/spec",
+  "specs/profile-nextcloud/spec",
+  "specs/profile-o11y/spec",
+  "specs/profile-o11y-gpu/spec",
+  "specs/profile-obsidian/spec",
+  "specs/profile-octos/spec",
+  "specs/profile-openclaw/spec",
+  "specs/profile-openkb/spec",
+  "specs/profile-owui/spec",
+  "specs/profile-pubnet/spec",
+  "specs/profile-qwenpaw/spec",
+  "specs/profile-rag/spec",
+  "specs/profile-ragflow/spec",
+  "specs/profile-registry/spec",
+  "specs/profile-translate/spec",
+  "specs/profile-xwiki/spec",
+  "specs/profile-zulip/spec",
+];
+
+const sidebars: SidebarsConfig = {
+  openspecSidebar: [
+    "specs/shared-platform/spec",
+    {
+      type: "category",
+      label: "Compose profiles",
+      items: profileSpecifications,
+    },
+    "specs/offline-asset-download/spec",
+    "specs/specification-site/spec",
+  ],
+};
+
+export default sidebars;

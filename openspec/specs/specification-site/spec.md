@@ -2,7 +2,7 @@
 
 ## Purpose
 
-OpenSpecの現行仕様を正規本文としてHTML化し、関連するADRと既存READMEへの導線を持つ仕様サイトのbuildおよび公開契約を定めます。
+OpenSpecの現行仕様とそれ以外の補足文書を明確に分離してHTML化するsiteのbuildおよび公開契約を定めます。
 
 ## Requirements
 
@@ -16,15 +16,35 @@ OpenSpecの現行仕様を正規本文としてHTML化し、関連するADRと�
 - **THEN** すべてのprofile仕様、共有platform仕様およびprofile以外の現行仕様がsiteへ含まれる
 - **THEN** build用contentは正規文書から毎回作り直され、手編集またはrepositoryへのcommitを許可しない
 
-### Requirement: 関連文書への導線
+### Requirement: OpenSpecとDocsの分離
 
-仕様サイトは、現行仕様に加えてrepositoryのADR、運用文書および既存READMEを同じsite内から参照可能にするものとする（MUST）。
+仕様siteの主navigationは`OpenSpec`と`Docs`の2項目だけを提供するものとする（MUST）。`OpenSpec`は`openspec/`配下の現行仕様だけを含み、`Docs`はADR、manual、troubleshooting、research、ruleおよび既存READMEを含むものとする（MUST）。
 
-#### Scenario: 実装詳細を調べる
+#### Scenario: 文書種別を選択する
 
 - **WHEN** 利用者が仕様siteのnavigationを開く
-- **THEN** ADR、manual、troubleshooting、research、ruleおよび各componentのREADMEへ移動できる
-- **THEN** 現行仕様と補足文書の区分をnavigation上で識別できる
+- **THEN** `OpenSpec`と`Docs`の2項目が表示される
+- **THEN** `OpenSpec`から現行仕様だけを、`Docs`からそれ以外の文書だけを参照できる
+
+### Requirement: 独立したhome pageを持たない
+
+仕様siteは専用のhome pageを生成せず、site rootで共有platform仕様を表示するものとする（MUST）。
+
+#### Scenario: site rootを開く
+
+- **WHEN** 利用者が仕様siteのroot URLを開く
+- **THEN** 独立したlanding pageではなく共有platform仕様が表示される
+- **THEN** `OpenSpec`のnavigationがactiveになる
+
+### Requirement: 現行契約の正規化
+
+利用者または運用者から観測可能な現行の能力、制約および期待結果はOpenSpecを正規本文とし、`docs/`またはREADMEだけに定義しないものとする（MUST）。
+
+#### Scenario: 補足文書から現行契約を発見する
+
+- **WHEN** contributorが`docs/`またはREADMEにのみ存在する現行契約を発見する
+- **THEN** 対応するOpenSpecへRequirementとScenarioとして移行する
+- **THEN** 移行完了を照合した後に補足文書側の重複する規範本文を削除する
 
 ### Requirement: Pull Requestでの検証
 
