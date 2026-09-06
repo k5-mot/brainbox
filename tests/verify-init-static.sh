@@ -215,37 +215,16 @@ verify_dify_airgap_configuration() {
   python3 -c 'import json, pathlib, sys; data=json.loads(pathlib.Path(sys.argv[1]).read_text()); plugins=data.get("plugins", []); expected={"id":"langgenius/openai_api_compatible","version":"0.0.64","sha256":"53c6b590f99ed0a9e8d8dcb435afc3700826fd1ac1493d7e255916fabc6679d2","requirementsSha256":"893906c1f3b3e26afbf186fe68fb8ca517a2e4b72458947b10e6ec03c5d4f278"}; sys.exit(0 if data.get("schemaVersion") == 1 and len(plugins) == 1 and all(plugins[0].get(key) == value for key, value in expected.items()) else 1)' "${lock_file}"
 }
 
-# root Compose構成と主要profileの解決結果を検証する。
+# root Compose構成、全profileの解決結果、OpenSpecとの対応を検証する。
 # 引数:
 #   なし。
 # 戻り値:
-#   Compose configが解決できる場合は0、失敗した場合は非0を返す。
+#   Compose configが解決でき、各profileに1つのspecがある場合は0、失敗した場合は非0を返す。
 # 副作用:
-#   Docker daemonへread-onlyなconfig解決を要求する。containerは起動しない。
+#   Docker Composeでread-onlyなconfig解決を行う。containerは起動しない。
 verify_compose_config() {
-  local profiles=(
-    common
-    keycloak
-    pubnet
-    inference
-    rag
-    registry
-    translate
-    owui
-    dify
-    ragflow
-    cloudflareos
-    nextcloud
-    xwiki
-    kaneo
-    zulip
-    gitlab
-    wikijs
-    obsidian
-    llmwiki
-    o11y
-    langfuse
-  )
+  local profiles=()
+  mapfile -t profiles < <(docker compose config --profiles | LC_ALL=C sort)
   local profile
 
   echo "compose config: all includes"
@@ -254,7 +233,26 @@ verify_compose_config() {
   for profile in "${profiles[@]}"; do
     echo "compose config: profile=${profile}"
     docker compose --profile "${profile}" config --services >/dev/null
+    if [[ ! -f "openspec/specs/profile-${profile}/spec.md" ]]; then
+      echo "Compose profileに対応するOpenSpecがありません: ${profile}" >&2
+      return 1
+    fi
   done
+
+  local profile_spec
+  for profile_spec in openspec/specs/profile-*/spec.md; do
+    profile="${profile_spec#openspec/specs/profile-}"
+    profile="${profile%/spec.md}"
+    if ! printf '%s\n' "${profiles[@]}" | grep -Fqx -- "${profile}"; then
+      echo "Compose profileに存在しないOpenSpecがあります: ${profile}" >&2
+      return 1
+    fi
+  done
+
+  if [[ ! -f openspec/specs/shared-platform/spec.md ]]; then
+    echo "共有platformのOpenSpecがありません" >&2
+    return 1
+  fi
 
   echo "compose config: profile=llmwiki offline"
   LLMWIKI_NPM_PACKAGES_DIR=/srv/npm docker compose \
