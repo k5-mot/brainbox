@@ -9,6 +9,14 @@ $TestParameters = @{
 Assert-DownloadScript @TestParameters
 
 $Source = Get-Content -LiteralPath $ScriptPath -Raw
+if ($Source -match [regex]::Escape("[System.IO.Path]::GetTempPath()")) {
+    throw "Download-PipPkgs-from-Project.ps1がuser側の一時directoryを使用しています。"
+}
+foreach ($Pattern in @(".requirements-", ".pip-download-", '"--no-cache-dir"')) {
+    if ($Source -notmatch [regex]::Escape($Pattern)) {
+        throw "project版pip作業領域のquota対策がありません: $Pattern"
+    }
+}
 foreach ($PythonVersion in @("3.12", "3.13", "3.14", "3.15")) {
     if ($Source -notmatch [regex]::Escape($PythonVersion)) {
         throw "Python version '$PythonVersion' が定義されていません。"

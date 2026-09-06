@@ -14,7 +14,7 @@ scriptのhelpを表示して終了します。
 Dify plugin、private-chat、OpenKBのPython依存を`C:\airgap\pypi`へ取得します。
 
 .NOTES
-download対象はこのscriptの`$Packages`で固定します。
+download対象はこのscriptの`$Packages`で固定します。一時directoryはOutputDirと同じvolumeへ作成し、pip cacheは使用しません。
 #>
 [CmdletBinding()]
 param (
@@ -31,6 +31,7 @@ if (-not $OutputDir) {
 }
 
 $ErrorActionPreference = "Stop"
+$OutputRoot = [System.IO.Path]::GetFullPath($OutputDir)
 $PythonVersions = @("3.12", "3.13", "3.14", "3.15")
 $Registries = @(
     "https://pypi.org/simple",
@@ -316,7 +317,7 @@ function Save-RequirementForTarget {
         [Parameter(Mandatory = $true)][string]$OutputDir
     )
 
-    $AttemptDir = Join-Path ([System.IO.Path]::GetTempPath()) "pip-download-$([guid]::NewGuid().ToString("N"))"
+    $AttemptDir = Join-Path $OutputRoot ".pip-download-$([guid]::NewGuid().ToString("N"))"
     New-Item -ItemType Directory -Path $AttemptDir -Force | Out-Null
     try {
         $DownloadRequirement = ($Requirement -split ";", 2)[0].Trim()
@@ -329,6 +330,7 @@ function Save-RequirementForTarget {
             "-m",
             "pip",
             "download",
+            "--no-cache-dir",
             "--dest", $AttemptDir
         ) + $IndexArguments + @("--no-deps") + (Get-PipTargetArguments -Target $Target -PythonVersion $PythonVersion) + @($DownloadRequirement)
 
@@ -402,7 +404,7 @@ function Save-RequirementSourceArchive {
     }
 }
 
-$OutputDir = Join-Path ([System.IO.Path]::GetFullPath($OutputDir)) "pypi"
+$OutputDir = Join-Path $OutputRoot "pypi"
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
 $PythonCommand = Get-PythonCommand

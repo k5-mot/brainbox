@@ -7,7 +7,10 @@ if (-not (Test-Python3Command)) {
 
 $OutputDir = New-DownloadTestDirectory -Name "pip-from-project"
 $ProjectDir = Join-Path $OutputDir "project"
+$UserCacheDir = Join-Path $OutputDir "user-cache"
+$PreviousCache = $env:PIP_CACHE_DIR
 try {
+    $env:PIP_CACHE_DIR = $UserCacheDir
     New-Item -ItemType Directory -Path $ProjectDir -Force | Out-Null
     "six==1.16.0" | Set-Content -LiteralPath (Join-Path $ProjectDir "requirements.txt") -Encoding ascii
 
@@ -22,7 +25,11 @@ try {
         $env:INFERLAB_DOWNLOAD_TEST = $PreviousValue
     }
     Assert-DownloadTestArtifacts -Directory (Join-Path $OutputDir "pypi") -Pattern @("*.whl", "*.tar.gz", "*.zip")
+    if (Test-Path -LiteralPath $UserCacheDir) {
+        throw "user pip cacheが使用されました: $UserCacheDir"
+    }
 }
 finally {
+    $env:PIP_CACHE_DIR = $PreviousCache
     Remove-DownloadTestDirectory -Path $OutputDir
 }

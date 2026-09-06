@@ -259,6 +259,7 @@ scripts/
 ### Download-PipPkgs.ps1
 
 - script内の`$Packages`に定義されたPython packageをダウンロードする.
+- pip cacheを無効化し、一時directoryは`OutputDir`と同じvolumeへ作成する.
 - 以下の組み合わせのパッケージをダウンロードする.
   - PythonVersion；
     - 3.12
@@ -291,6 +292,7 @@ scripts/
 ### Download-PipPkgs-from-Project.ps1
 
 - 任意projectの`pyproject.toml`または`requirements.txt`からPython packageをダウンロードする補助script.
+- pip cacheを無効化し、一時requirements fileとdownload directoryは`OutputDir`と同じvolumeへ作成する.
 
 ### Download-NpmPkgs-from-Project.ps1
 
