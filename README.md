@@ -4,7 +4,7 @@
 
 ### Profile一覧
 
-`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`owui`、`nextcloud`、`obsidian`、`o11y`、`langfuse` です。`registry`、`dify`、`ragflow`、`xwiki`、`wikijs`、`kaneo`、`zulip`、`gitlab`、`llmwiki` などのその他の profile は必要な場合に個別に指定します。
+`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`owui`、`nextcloud`、`obsidian`、`o11y`、`langfuse` です。`registry`、`dify`、`ragflow`、`cloudflareos`、`xwiki`、`wikijs`、`kaneo`、`zulip`、`gitlab`、`llmwiki` などのその他の profile は必要な場合に個別に指定します。
 
 | Profile | Compose file | 用途 |
 | --- | --- | --- |
@@ -17,6 +17,7 @@
 | `owui` | `20-owui/docker-compose.yml` | Open WebUI、検索、ツール連携、Knowledge同期 |
 | `dify` | `21-dify/docker-compose.yml` | 自動化 |
 | `ragflow` | `22-ragflow/docker-compose.yml` | RAGとAgent platform |
+| `cloudflareos` | `25-cloudflareos/docker-compose.yml` | AI productivity environment |
 | `nextcloud` | `30-nextcloud/docker-compose.yml` | ファイル保存 |
 | `xwiki` | `31-xwiki/docker-compose.yml` | Wiki |
 | `kaneo` | `32-kaneo/docker-compose.yml` | プロジェクト管理 |
@@ -89,6 +90,7 @@
 | `ragflow` | `ragflow-rustfs` | `32202`, `32203` | `22-ragflow/docker-compose.yml` |
 | `ragflow` | `ragflow-rustfs-bucket-init` | - | `22-ragflow/docker-compose.yml` |
 | `ragflow` | `ragflow-valkey` | - | `22-ragflow/docker-compose.yml` |
+| `cloudflareos` | `cloudflare-os` | `32500` | `25-cloudflareos/docker-compose.yml` |
 | `nextcloud` | `nextcloud` | `33000` | `30-nextcloud/docker-compose.yml` |
 | `nextcloud` | `nextcloud-postgres` | - | `30-nextcloud/docker-compose.yml` |
 | `nextcloud` | `nextcloud-valkey` | - | `30-nextcloud/docker-compose.yml` |
@@ -150,6 +152,7 @@
 - [Open WebUI](20-owui/README.md)
 - [Dify](21-dify/README.md)
 - [RAGFlow](22-ragflow/README.md)
+- [Cloudflare OS](25-cloudflareos/README.md)
 - [Nextcloud](30-nextcloud/README.md)
 - [XWiki](31-xwiki/README.md)
 - [Zulip](33-zulip/README.md)
