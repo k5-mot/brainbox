@@ -62,10 +62,6 @@ layout:
       icon: /icons/gitlab.png
       style: row
       columns: 4
-  - 37-wikijs:
-      icon: /icons/wikijs.png
-      style: row
-      columns: 4
   - 40-obsidian:
       icon: /icons/obsidian.png
       style: row
