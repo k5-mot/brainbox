@@ -4,7 +4,7 @@
 
 ### Profile一覧
 
-`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`owui`、`nextcloud`、`obsidian`、`o11y`、`langfuse` です。`registry`、`translate`、`dify`、`ragflow`、`cloudflareos`、`xwiki`、`wikijs`、`kaneo`、`zulip`、`gitlab`、`llmwiki` などのその他の profile は必要な場合に個別に指定します。
+`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`translate`、`owui`、`nextcloud`、`obsidian`、`llmwiki`、`langfuse` です。`registry`、`dify`、`ragflow`、`cloudflareos`、`octos`、`aion`、`xwiki`、`wikijs`、`kaneo`、`zulip`、`gitlab`、`o11y` などのその他の profile は必要な場合に個別に指定します。
 
 | Profile | Compose file | 用途 |
 | --- | --- | --- |
