@@ -10,8 +10,11 @@ rules:
   specs:
     - 要件とscenarioは日本語で記載する
     - 実装対象のscript名と観測可能な期待結果を明記する
+    - Docker Compose profileごとにprofile-<profile>という1つのspecを作成する
+    - profile横断要件はshared-platform specだけに記載する
+    - 内部実装詳細はADRまたは既存READMEを参照し、specへ重複記載しない
   tasks:
-    - 実装、自動検証、実downloadにるsmoke testを分けて記載する
+    - 実装、自動検証、実downloadによるsmoke testを分けて記載する
 
 operations:
   apply:
