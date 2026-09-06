@@ -49,21 +49,21 @@ curl -fsS -X POST "http://${PUBLIC_HOST:-localhost}:31300/translate" \
 
 ## Open WebUI連携
 
-`owui` profileでもLibreTranslateが起動する。Open WebUIはLibreTranslateの`/spec`をOpenAPI toolとして読み込み、chatから翻訳APIを呼び出せる。
+`owui` profileでもLibreTranslateが起動する。Open WebUIはLibreTranslateの`/translate`をOpenAPI toolとして登録し、chatから翻訳APIを呼び出せる。LibreTranslateが公開するSwagger 2.0仕様ではOpen WebUIがrequest bodyを構築できないため、互換性のある最小OpenAPI 3仕様を`TOOL_SERVER_CONNECTIONS`へ設定している。
 
 ```bash
 # Open WebUIとLibreTranslateを起動し、両serviceがhealthyになるまで待つ。
 sudo docker compose --env-file .env --profile owui up -d --wait open-webui libretranslate
 
-# Open WebUI containerからLibreTranslateのAPI仕様を取得できることを確認する。
+# Open WebUI containerからLibreTranslateのAPIへ接続できることを確認する。
 sudo docker compose --env-file .env --profile owui exec open-webui \
-  python -c "import urllib.request; urllib.request.urlopen('http://libretranslate:5000/spec').read()"
+  python -c "import urllib.request; urllib.request.urlopen('http://libretranslate:5000/health').read()"
 ```
 
 期待結果:
 
 - Open WebUIのtool一覧に`LibreTranslate`が表示される。
-- Open WebUI containerから`http://libretranslate:5000/spec`へ接続できる。
+- Open WebUI containerから`http://libretranslate:5000/health`へ接続できる。
 
 失敗条件:
 

@@ -15,7 +15,7 @@ Open WebUI、Open Terminal、mcpo、SearXNG、OIKB、OIKB用RustFSをまとめ�
 
 Open WebUIのKeycloak連携は、`OAUTH_CLIENT_SECRET`とKeycloak側`open-webui` client secretの一致が前提になる。
 
-LibreTranslate連携では、`TOOL_SERVER_CONNECTIONS`へ`http://libretranslate:5000/spec`を登録する。`owui` profileを起動するとLibreTranslateも起動し、Open WebUIのtool一覧から翻訳APIを利用できる。APIの直接利用方法は[`13-translate/README.md`](../13-translate/README.md)を参照する。
+LibreTranslate連携では、`TOOL_SERVER_CONNECTIONS`へ`http://libretranslate:5000/translate`の最小OpenAPI 3仕様を登録する。`owui` profileを起動するとLibreTranslateも起動し、Open WebUIのtool一覧から翻訳APIを利用できる。APIの直接利用方法は[`13-translate/README.md`](../13-translate/README.md)を参照する。
 
 llmwiki連携では、`mcpo`がDocker socketへアクセスして`${STACK_NAME}-llmwiki`内でMCPプロセスを起動する。Docker socketへアクセスできるcontainerはホスト上のDockerを操作できるため、信頼できる設定とイメージだけを使用すること。
 
