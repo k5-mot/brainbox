@@ -23,7 +23,6 @@ pnpm docs:start
 失敗条件:
 
 - OpenSpec構造、MDX構文またはsidebarの参照先が不正な場合、buildは非zeroで終了します。
-- HTML化しない実装fileへの相対linkはwarningとして表示されます。
 
 ## 公開先の確認
 

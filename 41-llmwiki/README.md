@@ -31,7 +31,7 @@ source-system固有処理は`llmwiki-ingester`のsource adapter interfaceの背�
 
 ## 設定
 
-すべての運用設定は [config.yaml](config.yaml) に置く。credential の値だけは環境変数で渡し、`provider.credential_env` と `provider.embedding.credential_env` には参照する環境変数名を指定する。既定の embedding model は inference stack の TEI model `cl-nagoya/ruri-v3:310m` を LiteLLM 経由で使用する。TEI の request 上限に合わせ、embedding batch sizeは2とする。
+すべての運用設定は [config.yaml](https://github.com/k5-mot/inferlab/blob/main/41-llmwiki/config.yaml) に置く。credential の値だけは環境変数で渡し、`provider.credential_env` と `provider.embedding.credential_env` には参照する環境変数名を指定する。既定の embedding model は inference stack の TEI model `cl-nagoya/ruri-v3:310m` を LiteLLM 経由で使用する。TEI の request 上限に合わせ、embedding batch sizeは2とする。
 
 設定は container 起動時に一度だけ読み込む。変更後は container を再起動する。
 

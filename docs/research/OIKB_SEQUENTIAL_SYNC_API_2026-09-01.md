@@ -14,7 +14,7 @@ OIKB 0.4.0のtrigger responseにはrun IDやuploadしたfile IDの一覧が含�
 
 ## 調査対象
 
-このrepositoryの[OIKB Containerfile](../../20-owui/oikb/Containerfile)は`ghcr.io/open-webui/oikb:0.4.0`をbase imageとしている。[Open WebUI Compose定義](../../20-owui/docker-compose.yml)は`ghcr.io/open-webui/open-webui:0.11.1`を使用している。
+このrepositoryの[OIKB Containerfile](https://github.com/k5-mot/inferlab/blob/main/20-owui/oikb/Containerfile)は`ghcr.io/open-webui/oikb:0.4.0`をbase imageとしている。[Open WebUI Compose定義](https://github.com/k5-mot/inferlab/blob/main/20-owui/docker-compose.yml)は`ghcr.io/open-webui/open-webui:0.11.1`を使用している。
 
 公式tagと対応commitは次のとおりである。
 

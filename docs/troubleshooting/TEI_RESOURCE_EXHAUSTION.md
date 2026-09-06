@@ -49,4 +49,4 @@ TEIのembedding serviceとreranking serviceへ、次の制限を適用した。
 
 ## References
 
-- [TEIのCompose設定](../../10-inference/docker-compose.yml)
+- [TEIのCompose設定](https://github.com/k5-mot/inferlab/blob/main/10-inference/docker-compose.yml)
