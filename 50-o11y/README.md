@@ -157,12 +157,12 @@ curl -fsS "http://${PUBLIC_HOST:-localhost}:35000/api/health" >/dev/null
 - `grafana/dashboards/services/clickhouse.json`: ClickHouseのquery、uptime、memoryを表示する。自作dashboard。
 - `grafana/dashboards/services/minio.json`: MinIO互換storage移行前のdashboard。SeaweedFS用dashboardへ置き換えるまでは参照用として残す。
 - `grafana/dashboards/services/http-probes.json`: Blackbox ExporterのHTTP probe結果を表示する。自作dashboard。
-- `grafana/dashboards/services/amd-dashboard_gpu.json`: ROCm Device Metrics Exporter公式dashboard（<https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_gpu.json>）。
-- `grafana/dashboards/services/amd-dashboard_job.json`: ROCm Device Metrics Exporter公式dashboard（<https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_job.json>）。
-- `grafana/dashboards/services/amd-dashboard_node.json`: ROCm Device Metrics Exporter公式dashboard（<https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_node.json>）。
-- `grafana/dashboards/services/amd-dashboard_overview.json`: ROCm Device Metrics Exporter公式dashboard（<https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_overview.json>）。
-- `grafana/dashboards/services/amd-dashboard_system.json`: ROCm Device Metrics Exporter公式dashboard（<https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_system.json>）。
-- `grafana/dashboards/services/nvidia-dcgm-exporter-dashboard.json`: NVIDIA DCGM Exporter公式dashboard（<https://github.com/NVIDIA/dcgm-exporter/blob/main/grafana/dcgm-exporter-dashboard.json>、Grafana.com: <https://grafana.com/grafana/dashboards/12239>）。
+- `grafana/dashboards/services/amd-dashboard_gpu.json`: [ROCm Device Metrics Exporter公式dashboard](https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_gpu.json)。
+- `grafana/dashboards/services/amd-dashboard_job.json`: [ROCm Device Metrics Exporter公式dashboard](https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_job.json)。
+- `grafana/dashboards/services/amd-dashboard_node.json`: [ROCm Device Metrics Exporter公式dashboard](https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_node.json)。
+- `grafana/dashboards/services/amd-dashboard_overview.json`: [ROCm Device Metrics Exporter公式dashboard](https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_overview.json)。
+- `grafana/dashboards/services/amd-dashboard_system.json`: [ROCm Device Metrics Exporter公式dashboard](https://github.com/ROCm/device-metrics-exporter/blob/main/grafana/dashboard_system.json)。
+- `grafana/dashboards/services/nvidia-dcgm-exporter-dashboard.json`: [NVIDIA DCGM Exporter公式dashboard](https://github.com/NVIDIA/dcgm-exporter/blob/main/grafana/dcgm-exporter-dashboard.json)、[Grafana.com](https://grafana.com/grafana/dashboards/12239)。
 
 サービス別dashboardは`grafana/generate_service_dashboards.py`で生成する。Grafana上では`services` folderに表示される。
 

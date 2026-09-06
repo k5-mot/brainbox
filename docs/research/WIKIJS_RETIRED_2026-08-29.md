@@ -1,5 +1,8 @@
 # Wiki.js初期セットアップとKeycloak連携
 
+> [!WARNING]
+> Wiki.js profileは2026-08-29にrepositoryから削除済みです。この文書は当時の判断を保存する調査記録であり、記載したcommandを現行環境で実行してはなりません（MUST NOT）。
+
 ## 目的
 
 この手順は、`37-wikijs`のWiki.js 2.5.314を初期化し、`01-keycloak`の`prod` realmを認証元として追加するためのものである。
