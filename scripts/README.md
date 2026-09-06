@@ -245,7 +245,13 @@ scripts/
 ### Download-Difypkg.ps1
 ### Download-Nextcloud.ps1
 ### Download-Docling.ps1
+
+- Hugging Faceのcacheは`OutputDir/.hf-cache`へ作成し、user profileのcacheを使用しない。
+
 ### Download-HFRepo.ps1
+
+- Hugging Faceのcacheは`OutputDir/.hf-cache`へ作成し、user profileのcacheを使用しない。
+
 ### Download-RPM.ps1
 ### Download-DEB.ps1
 
