@@ -295,6 +295,7 @@ scripts/
 ### Download-NpmPkgs-from-Project.ps1
 
 - 任意projectの`package.json`からnpm packageをダウンロードする補助script.
+- npm cache、作業directory、一時parserは`OutputDir`と同じvolumeへ作成し、user profileのcacheと一時directoryを使用しない。
 
 ## References
 
