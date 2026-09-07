@@ -18,7 +18,7 @@ Docker Composeの`rag` profileが利用者と運用者へ提供する能力、�
 
 ### Requirement: rag profileの公開境界
 
-`rag` profileは、DoclingをhostのTCP port `31100`で公開し、Qdrantは`internal-nw`内だけで提供するものとする（MUST）。
+`rag` profileは、DoclingをhostのTCP port `31100`、Qdrantを`31101`で公開し、Qdrantを`internal-nw`内のTCP port `6333`でも提供するものとする（MUST）。
 
 #### Scenario: 利用者または依存serviceが接続する
 

@@ -64,7 +64,7 @@
 | `inference`, `qwenpaw` | `qwenpaw-init` | - | `10-inference/docker-compose.yml` |
 | `inference` | `kokoro` | - | `10-inference/docker-compose.yml` |
 | `rag` | `docling` | `31100` | `11-rag/docker-compose.yml` |
-| `rag` | `qdrant` | - | `11-rag/docker-compose.yml` |
+| `rag` | `qdrant` | `31101` | `11-rag/docker-compose.yml` |
 | `registry`, `dify` | `pypiserver` | `31200` | `12-registry/docker-compose.yml` |
 | `registry` | `verdaccio` | `31201` | `12-registry/docker-compose.yml` |
 | `registry` | `code-marketplace` | `31202` | `12-registry/docker-compose.yml` |

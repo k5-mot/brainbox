@@ -85,6 +85,8 @@ services:
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-sk-qdrant-api-key}
       QDRANT__TELEMETRY_DISABLED: "true"
+    ports:
+      - 31101:6333
     volumes:
       - qdrant-storage:/qdrant/storage
       - qdrant-snapshots:/qdrant/snapshots

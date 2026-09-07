@@ -5,7 +5,7 @@ DoclingとQdrantをまとめた文書処理・ベクトル検索stack。
 - Docling: 文書変換APIとUIを提供する。
 - Qdrant: Open WebUIなどから利用するベクトル検索databaseを提供する。
 
-Qdrantはhostへportを公開していないため、動作確認は同じCompose network上のDocling containerから実行する。
+QdrantはhostのTCP port `31101`でAPIを公開し、`QDRANT_API_KEY`による認証を要求する。Compose network内のserviceは従来どおり`http://qdrant:6333`で接続する。
 
 ## Docling資材の準備
 
@@ -46,7 +46,7 @@ sudo docker compose --env-file .env --profile rag up -d
 期待結果:
 
 - `docling`が`http://${PUBLIC_HOST}:31100`で応答する。
-- `qdrant`がCompose network内の`http://qdrant:6333`で応答する。
+- `qdrant`がhostの`http://${PUBLIC_HOST}:31101`とCompose network内の`http://qdrant:6333`で応答する。
 - `docling`と`qdrant`がhealthyになる。
 - Doclingがbind mountしたmodelを起動時に読み込む。
 
@@ -55,7 +55,7 @@ sudo docker compose --env-file .env --profile rag up -d
 - Doclingのmodel cache初期化またはdownloadで起動が止まる。
 - `/srv/docling/`のmodel directoryまたは`/srv/docling/tesseract/`が存在しない。
 - Qdrantが`11-rag/qdrant/config.yaml`を読み込めない。
-- hostの`31100` portが他processと競合する。
+- hostの`31100`または`31101` portが他processと競合する。
 
 ## 確認手順
 
@@ -85,6 +85,9 @@ sudo docker compose --env-file .env --profile rag exec docling curl -fsS -H "api
 
 # Docling containerからQdrantのcollection一覧APIを確認する。
 sudo docker compose --env-file .env --profile rag exec docling curl -fsS -H "api-key: ${QDRANT_API_KEY}" http://qdrant:6333/collections
+
+# hostへ公開したQdrantのcollection一覧APIを確認する。
+curl -fsS -H "api-key: ${QDRANT_API_KEY}" "http://${PUBLIC_HOST:-localhost}:31101/collections"
 ```
 
 期待結果:
@@ -94,7 +97,7 @@ sudo docker compose --env-file .env --profile rag exec docling curl -fsS -H "api
 - model mountのoptionに`ro`が含まれる。
 - Tesseract言語一覧に`eng`、`jpn`、`jpn_vert`、`osd`、`script/Japanese`、`script/Japanese_vert`が含まれる。
 - Qdrantの`readyz`がHTTP 200を返す。
-- Qdrantのcollection一覧APIがJSONを返す。
+- Qdrantの内部・host公開双方のcollection一覧APIがJSONを返す。
 
 失敗条件:
 
@@ -105,6 +108,7 @@ sudo docker compose --env-file .env --profile rag exec docling curl -fsS -H "api
 - 必要なTesseract言語が表示されない。
 - QdrantのAPI key不一致によりHTTP 401になる。
 - `docling` containerから`qdrant:6333`を名前解決できない。
+- HostからTCP port `31101`へ接続できない。
 
 ## rollback
 
