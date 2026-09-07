@@ -27,14 +27,6 @@ const sidebars: SidebarsConfig = {
   docsSidebar: [
     {
       type: "category",
-      label: "ADR",
-      items: [
-        "docs/adr/docusaurusによる現行仕様の公開",
-        "docs/adr/openspecと補足文書の分離",
-      ],
-    },
-    {
-      type: "category",
       label: "運用manual",
       items: [
         "docs/manual/DIFY_AIRGAP",
@@ -50,21 +42,6 @@ const sidebars: SidebarsConfig = {
       items: [
         "docs/troubleshooting/OPENWEBUI_DOCLING_LOAD",
         "docs/troubleshooting/TEI_RESOURCE_EXHAUSTION",
-      ],
-    },
-    {
-      type: "category",
-      label: "調査記録",
-      items: [
-        "docs/research/CONTAINER_ALIGNMENT_2026-08-21",
-        "docs/research/CONTAINER_IMAGE_VERSIONS_2026-08-21",
-        "docs/research/DIFY_AIRGAP_PLUGINS_2026-08-24",
-        "docs/research/DOCLING_BIND_MOUNT_2026-08-24",
-        "docs/research/LLMWIKI_COUCHDB_2026-08-25",
-        "docs/research/OIKB_SEQUENTIAL_SYNC_API_2026-09-01",
-        "docs/research/WIKIJS_RETIRED_2026-08-29",
-        "docs/research/XWIKI_DOCKER_COMPOSE_2026-08-24",
-        "docs/research/XWIKI_KEYCLOAK_OIDC_2026-08-25",
       ],
     },
     {

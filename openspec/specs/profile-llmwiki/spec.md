@@ -36,3 +36,19 @@ Docker Composeの`llmwiki` profileが利用者と運用者へ提供する能力�
 - **THEN** profile固有の連携が定義された経路で成功する
 - **THEN** credentialの実値をrepositoryへ保存しない
 
+### Requirement: CouchDB snapshotの取り込み
+
+`llmwiki` profileは、CouchDBのSelf-hosted LiveSync snapshotを6時間ごとにread-onlyで取得し、非削除のMarkdown親documentを`children`順に復元するものとする（MUST）。hidden path、除外prefix、Markdown以外および空本文を取り込んではならない（MUST NOT）。
+
+#### Scenario: Snapshot同期が成功する
+
+- **WHEN** Ingesterが有効なCouchDB credentialでscheduled ingestを実行する
+- **THEN** 対象noteがLLM Wikiのsource contractに従うMarkdownへ復元される
+- **THEN** adapterのmanifestで所有を確認でき、snapshotから消えたsourceだけが削除される
+- **THEN** 同期成功後に増分compile、lint、evalが順に実行される
+
+#### Scenario: Snapshot同期が失敗する
+
+- **WHEN** CouchDB認証、HTTP response、JSON、leaf参照、document上限またはsource更新のいずれかが不正である
+- **THEN** 既存manifestを新しいsnapshotで置換しない
+- **THEN** compile-on-ingestを実行せず、既存viewerの世代を維持する

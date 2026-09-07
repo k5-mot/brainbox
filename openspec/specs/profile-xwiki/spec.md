@@ -36,3 +36,28 @@ Docker Composeの`xwiki` profileが利用者と運用者へ提供する能力、
 - **THEN** profile固有の連携が定義された経路で成功する
 - **THEN** credentialの実値をrepositoryへ保存しない
 
+### Requirement: XWikiの初期provisioningとOIDC切替
+
+`xwiki` profileは初回provisioningを標準認証で行い、OIDC Authenticator導入後だけKeycloak認証classへ切り替えるものとする（MUST）。Keycloak provider URLはtokenのissuerと完全一致し、browserとXWiki containerの双方から到達可能な公開URLでなければならない（MUST）。
+
+#### Scenario: OIDCを有効化する
+
+- **WHEN** 運用者がStandard Flavor、OIDC AuthenticatorおよびKeycloak `xwiki` clientを構成して認証classを切り替える
+- **THEN** XWiki login endpointがKeycloak `prod` realmへredirectする
+- **THEN** Keycloakのgroup claimに基づいて許可した管理者groupだけが同期される
+
+#### Scenario: OIDC障害から復旧する
+
+- **WHEN** OIDC extension、clientまたはissuer設定によりloginできない
+- **THEN** 認証classを標準認証へ戻してlocal userまたはsuperadminで復旧できる
+- **THEN** XWiki data、extensionおよびPostgreSQL dataを削除しない
+
+### Requirement: XWiki dataの永続化
+
+`xwiki` profileはXWiki application dataとPostgreSQL clusterを別のnamed volumeへ永続化するものとする（MUST）。
+
+#### Scenario: XWiki containerを再作成する
+
+- **WHEN** 運用者がXWikiとPostgreSQLのcontainerを再作成する
+- **THEN** page、attachment、extensionおよびdatabase dataが保持される
+- **THEN** PostgreSQLがhealthyになった後にXWikiが起動する

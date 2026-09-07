@@ -36,3 +36,18 @@ Docker Composeの`rag` profileが利用者と運用者へ提供する能力、�
 - **THEN** profile固有の連携が定義された経路で成功する
 - **THEN** credentialの実値をrepositoryへ保存しない
 
+### Requirement: Doclingの閉域資材
+
+`rag` profileは、Docling modelをhostの`/srv/docling`、Tesseract dataを`/srv/docling/tesseract`からread-onlyで利用し、Hugging FaceとTransformersをoffline modeにするものとする（MUST）。Doclingは起動時に事前配置modelをloadし、実行時に不足資材をdownloadしてはならない（MUST NOT）。
+
+#### Scenario: 事前配置資材でDoclingを起動する
+
+- **WHEN** `eng`、`jpn`、`jpn_vert`、`osd`および日本語scriptを含むTesseract dataとDocling modelを配置して`rag` profileを起動する
+- **THEN** Containerは事前配置資材を変更せずmodelをloadする
+- **THEN** Doclingのreadiness endpointが成功する
+
+#### Scenario: 必須資材が不足している
+
+- **WHEN** model directoryまたは必須Tesseract dataが存在しない状態でDoclingを起動する
+- **THEN** 不足資材をInternetからdownloadしない
+- **THEN** 起動またはreadiness判定が失敗し、資材不足を運用者が検出できる

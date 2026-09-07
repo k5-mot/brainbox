@@ -42,6 +42,11 @@ await cp(
   join(generatedOpenSpecDirectory, "specs"),
   { recursive: true },
 );
+await cp(
+  join(repositoryDirectory, "openspec", "changes"),
+  join(generatedOpenSpecDirectory, "changes"),
+  { recursive: true },
+);
 const openSpecHome = join(
   generatedOpenSpecDirectory,
   "specs",

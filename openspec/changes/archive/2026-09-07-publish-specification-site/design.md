@@ -1,8 +1,8 @@
-# ADR-0001: Docusaurusによる現行仕様の公開
+# Docusaurusによる仕様サイト公開の設計
 
 ## Status
 
-Superseded by [ADR-0002](0002-openspecと補足文書の分離.md)
+公開方式は採用済みです。文書の分類とnavigationは[OpenSpecとDocsの分離設計](../2026-09-07-separate-openspec-docs/design.md)で更新しました。
 
 ## Context
 
@@ -10,7 +10,7 @@ OpenSpecの現行仕様はrepository内のMarkdownが正規本文である一方
 
 ## Decision
 
-Docusaurusのdocs pluginは、repository rootの`openspec/specs`、`docs`および既存READMEからbuild直前に作り直すgit非追跡contentを読み込みます。site generatorが稼働中serviceのstateやsecretを走査しないよう、公開対象のMarkdownだけをstageします。生成contentは手編集せず、正規本文として扱いません。1つのnavigation内で現行仕様を先頭に置き、ADR、運用文書、調査記録、rule、READMEは補足文書として区分します。
+Docusaurusのdocs pluginは、repository rootの`openspec`、`docs`および既存READMEからbuild直前に作り直すgit非追跡contentを読み込みます。site generatorが稼働中serviceのstateやsecretを走査しないよう、公開対象のMarkdownだけをstageします。生成contentは手編集せず、正規本文として扱いません。文書種別ごとのnavigationは後続changeで分離します。
 
 Pull RequestとMerge RequestではOpenSpec strict validationと静的site buildだけを行います。`main`ではGitHub Actionsの公式Pages artifactをGitHub Pagesへdeployし、GitLab CI/CDでは`pages.publish`で同じbuild directoryをGitLab Pagesへ公開します。公開URLはCI providerからbuild時に注入し、Docusaurusの`url`と`baseUrl`へ分解します。
 

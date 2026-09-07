@@ -2,29 +2,40 @@
 
 ## Purpose
 
-OpenSpecの現行仕様とそれ以外の補足文書を明確に分離してHTML化するsiteのbuildおよび公開契約を定めます。
+OpenSpecの現行仕様と変更履歴を運用文書から明確に分離してHTML化するsiteのbuildおよび公開契約を定めます。
 
 ## Requirements
 
 ### Requirement: 正規文書からの静的site生成
 
-仕様サイトは、`openspec/specs`の現行仕様をbuild専用のgit非追跡directoryへ機械的に同期し、Docusaurusで静的HTMLへbuildするものとする（MUST）。
+仕様サイトは、`openspec/specs`の現行仕様と`openspec/changes`の変更履歴をbuild専用のgit非追跡directoryへ機械的に同期し、Docusaurusで静的HTMLへbuildするものとする（MUST）。
 
 #### Scenario: 仕様サイトをbuildする
 
 - **WHEN** contributorがrepositoryの依存packageを導入してdocs buildを実行する
-- **THEN** すべてのprofile仕様、共有platform仕様およびprofile以外の現行仕様がsiteへ含まれる
+- **THEN** すべてのprofile仕様、共有platform仕様、profile以外の現行仕様、active changeおよびarchived changeがsiteへ含まれる
 - **THEN** build用contentは正規文書から毎回作り直され、手編集またはrepositoryへのcommitを許可しない
 
 ### Requirement: OpenSpecとDocsの分離
 
-仕様siteの主navigationは`OpenSpec`と`Docs`の2項目だけを提供するものとする（MUST）。`OpenSpec`は`openspec/`配下の現行仕様だけを含み、`Docs`はADR、manual、troubleshooting、research、ruleおよび既存READMEを含むものとする（MUST）。
+仕様siteの主navigationは`OpenSpec`と`Docs`の2項目だけを提供するものとする（MUST）。`OpenSpec`は`openspec/`配下の現行仕様、変更提案、設計判断および調査証跡を含み、`Docs`はmanual、troubleshooting、project ruleおよび既存READMEを含むものとする（MUST）。
 
 #### Scenario: 文書種別を選択する
 
 - **WHEN** 利用者が仕様siteのnavigationを開く
 - **THEN** `OpenSpec`と`Docs`の2項目が表示される
-- **THEN** `OpenSpec`から現行仕様だけを、`Docs`からそれ以外の文書だけを参照できる
+- **THEN** `OpenSpec`から現行仕様と変更履歴を参照できる
+- **THEN** `Docs`から運用手順、障害復旧、project ruleおよびcomponent説明を参照できる
+
+### Requirement: OpenSpec artifactの配置
+
+変更理由と設計判断は対応するOpenSpec changeの`proposal.md`および`design.md`を正規本文とし、調査時点の詳細な証拠は同じchange内へ保存するものとする（MUST）。現行の観測可能な契約はmain spec、実行手順はmanualまたはREADMEだけを正規本文とするものとする（MUST）。
+
+#### Scenario: 変更記録をarchiveする
+
+- **WHEN** contributorが実装済み変更の設計判断と調査証跡を整理する
+- **THEN** archived changeから変更理由、採用判断、現行specおよび詳細証跡を追跡できる
+- **THEN** ADRまたは調査記録だけを`docs/`へ残さない
 
 ### Requirement: 独立したhome pageを持たない
 

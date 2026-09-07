@@ -13,7 +13,7 @@ _Avoid_: 設定ファイル, config, 環境変数設定
 _Avoid_: OpenSpec Document, 実装仕様, 変更提案
 
 **仕様サイト**:
-現行仕様を表示する`OpenSpec`と、ADR、運用文書、調査記録、rule、READMEを表示する`Docs`を分離した公開物。
+現行仕様と変更履歴を表示する`OpenSpec`と、運用manual、troubleshooting、project rule、READMEを表示する`Docs`を分離した公開物。
 _Avoid_: OpenSpec HTML, ドキュメントサイト, Docusaurus
 
 **profile仕様**:

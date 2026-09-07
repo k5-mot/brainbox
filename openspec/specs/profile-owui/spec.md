@@ -36,3 +36,18 @@ Docker Composeの`owui` profileが利用者と運用者へ提供する能力、�
 - **THEN** profile固有の連携が定義された経路で成功する
 - **THEN** credentialの実値をrepositoryへ保存しない
 
+### Requirement: OIKB sourceの逐次同期
+
+`owui` profileはOIKB内蔵schedulerを無効にし、外部trigger scriptが設定順にsourceを1件ずつ同期するものとする（MUST）。後続sourceは、OIKBの成功履歴とOpen WebUIのfile処理およびKnowledge link完了を確認するまで開始してはならない（MUST NOT）。
+
+#### Scenario: 全sourceを1周期同期する
+
+- **WHEN** 運用者がOIKBとOpen WebUIのAPI credentialおよびsource順を指定して逐次同期を開始する
+- **THEN** 各sourceについて今回のOIKB同期が`success`となりhistoryへ保存されるまで待機する
+- **THEN** 今回のfileがすべて`completed`となりKnowledge Baseへlinkされ、pending fileが0件になった後だけ次のsourceを開始する
+
+#### Scenario: 同期または登録が失敗する
+
+- **WHEN** OIKBが成功以外で終了するか、Open WebUIのfile処理、link、件数照合またはtimeout判定が失敗する
+- **THEN** 同じ周期の後続sourceを開始しない
+- **THEN** 失敗したsourceと判定理由をlogへ記録する
