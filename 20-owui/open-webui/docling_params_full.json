@@ -38,7 +38,7 @@
         "model_spec": {
             "name": "google/gemma4:31b",
             "default_repo_id": "google/gemma4:31b",
-            "prompt": "この画像を日本語でRAG用に説明してください。画像内の文字、図表、UI、構造、位置関係、重要な数値・ラベルを具体的に記述してください。推測は避け、不明な点は不明と書いてください。",
+            "prompt": "Describe this image for use in a Retrieval-Augmented Generation (RAG) system.\nProvide a detailed, factual description of all visible information in the image, including:\n- All readable text, preserving the original wording as accurately as possible\n- Diagrams, charts, tables, icons, and other visual elements\n- UI components such as buttons, menus, tabs, input fields, labels, and navigation elements\n- The overall layout, hierarchy, grouping, and structural organization of the image\n- Spatial relationships and relative positions of important elements (for example: top-left, centered, below, inside, connected to, or adjacent to)\n- Important numbers, values, labels, headings, annotations, legends, and identifiers\nBe specific and objective. Do not infer information that is not clearly visible in the image. If any text, value, element, or relationship cannot be determined with confidence, explicitly state that it is unclear or unknown.\nOutput only the image description, enclosed exactly within the following tags:\n<picture_desciption>\n[image description]\n</picture_desciption>",
             "response_format": "markdown",
             "supported_engines": [
                 "api",
