@@ -27,6 +27,7 @@ const componentDirectories = [
   "50-o11y",
   "51-langfuse",
   "scripts",
+  "scripts/oikb",
 ];
 
 if (siteDirectory !== join(repositoryDirectory, "docs-site")) {
