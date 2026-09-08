@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import logging
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import call, patch
@@ -524,6 +526,55 @@ class OikbImagePatchTest(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("patch-openwebui-synchronous-upload.py", containerfile)
+
+
+class PendingCheckScriptTest(unittest.TestCase):
+    """Open WebUI pending file一覧の分類と表示を検証する。"""
+
+    def test_pending_files_are_classified_and_displayed(self) -> None:
+        """経過時間でstuckとpendingを分類しTSVで表示する。"""
+        check = load_script(
+            "check_owui_pending",
+            "scripts/oikb/check_owui_pending.py",
+        )
+        files = [
+            {
+                "id": "old-file",
+                "filename": "old.pdf",
+                "data": {"status": "processing"},
+                "updated_at": 100,
+            },
+            {
+                "id": "new-file",
+                "filename": "new.pdf",
+                "data": {"status": "pending"},
+                "created_at": 900,
+            },
+        ]
+        with (
+            patch.object(check, "get_pending_files", return_value=files),
+            patch.object(check.time, "time", return_value=1_000),
+        ):
+            records = check.collect_pending_files(
+                "http://open-webui",
+                "secret",
+                ["kb-a"],
+                stuck_after_seconds=300,
+            )
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            check.write_pending_files(records)
+
+        self.assertEqual([record["state"] for record in records], ["stuck", "pending"])
+        self.assertEqual(
+            output.getvalue().splitlines(),
+            [
+                "state\tstatus\tage_seconds\tknowledge_id\tfile_id\tfilename",
+                "stuck\tprocessing\t900\tkb-a\told-file\told.pdf",
+                "pending\tpending\t100\tkb-a\tnew-file\tnew.pdf",
+            ],
+        )
 
 
 if __name__ == "__main__":

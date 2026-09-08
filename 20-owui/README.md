@@ -121,6 +121,25 @@ sudo docker compose --env-file .env --profile owui up -d
 
 保守scriptのlog messageは英語で出力し、terminal実行時は`DEBUG`、`INFO`、`WARNING`、`ERROR`、`CRITICAL`のlevel名を色付きで表示する。ANSI colorを無効にする場合は`NO_COLOR`環境変数を設定する。
 
+### pending file一覧の確認
+
+`check_owui_pending.py`は、現在`pending`または`processing`のfileを一覧表示する。既定では更新から1時間以上経過したfileを`stuck`、それ以外を`pending`として分類する。`--stuck-after-seconds`で境界時間を変更できる。
+
+```bash
+# 全Knowledge Baseのpending fileをTSV形式で表示する。
+python3 scripts/oikb/check_owui_pending.py
+```
+
+期待結果:
+
+- `state`、`status`、経過秒数、Knowledge ID、file ID、file名が標準出力へ表示される。
+- Open WebUIのfile、Knowledge関連、vectorは変更されない。
+
+失敗条件:
+
+- API keyが未設定でscriptが終了code 2を返す。
+- Open WebUIまたはOIKBへ接続できず、scriptが終了code 1を返す。
+
 ### 処理停止ファイルの削除
 
 `remove_owui_pending.py`は、OIKBのhealthと同期履歴から現在登録されているKnowledge Baseを調査し、Open WebUIで`pending`または`processing`のまま1時間以上更新されていないfileを検出する。Knowledge IDは`--knowledge-id`で明示してもよい。
