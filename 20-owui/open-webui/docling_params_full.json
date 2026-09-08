@@ -26,7 +26,10 @@
             "engine_type": "api",
             "url": "http://litellm:4000/v1/chat/completions",
             "headers": {
-                "Authorization": "Bearer sk-litellm-master-key"
+                "Authorization": "Bearer sk-litellm-master-key",
+                "langfuse_trace_name": "Docling",
+                "langfuse_generation_name": "Docling-Picture-Description",
+                "langfuse_tags": "[\"open-webui\",\"docling\"]"
             },
             "params": {},
             "timeout": 300,
