@@ -376,34 +376,6 @@ def get_pending_file_ids(
     }
 
 
-def get_file_status(
-    open_webui_url: str,
-    open_webui_api_key: str,
-    file_id: str,
-) -> str:
-    """Open WebUI fileの処理statusを取得する。
-
-    Args:
-        open_webui_url: Open WebUIのbase URL。
-        open_webui_api_key: Open WebUI API key。
-        file_id: 対象file ID。
-
-    Returns:
-        fileの処理status。
-
-    Raises:
-        TypeError: status responseの形式が不正な場合。
-    """
-    payload = request_json(
-        "GET",
-        f"{open_webui_url.rstrip('/')}/api/v1/files/{quote(file_id, safe='')}/process/status",
-        open_webui_api_key,
-    )
-    if not isinstance(payload, dict) or not isinstance(payload.get("status"), str):
-        raise TypeError("Open WebUI file status response must contain status")
-    return payload["status"]
-
-
 def wait_for_existing_pending_files(
     open_webui_url: str,
     open_webui_api_key: str,
@@ -437,16 +409,6 @@ def wait_for_existing_pending_files(
         if not pending_ids:
             return
 
-        failed_ids = [
-            file_id
-            for file_id in pending_ids
-            if get_file_status(open_webui_url, open_webui_api_key, file_id) == "failed"
-        ]
-        if failed_ids:
-            raise ValueError(
-                f"Existing Open WebUI file processing failed: source={source.name} "
-                f"files={len(failed_ids)}"
-            )
         LOGGER.info(
             "Waiting for existing Open WebUI files: source=%s pending=%d",
             source.name,
@@ -487,7 +449,7 @@ def wait_for_open_webui_registration(
 
     Raises:
         TimeoutError: 指定時間内に登録が完了しない場合。
-        ValueError: file処理失敗、同時upload、またはfile数不整合の場合。
+        ValueError: 同時uploadまたはfile数不整合の場合。
     """
     added = int(history.get("files_added", 0))
     modified = int(history.get("files_modified", 0))
@@ -498,67 +460,52 @@ def wait_for_open_webui_registration(
     deadline = time.monotonic() + timeout_seconds
 
     while time.monotonic() < deadline:
-        linked_ids = list_linked_file_ids(
-            open_webui_url,
-            open_webui_api_key,
-            source.knowledge_id,
-        )
         pending_ids = get_pending_file_ids(
             open_webui_url,
             open_webui_api_key,
             source.knowledge_id,
         )
-        observed_new_ids.update(
-            (linked_ids | pending_ids) - previous_linked_ids,
-        )
+        observed_new_ids.update(pending_ids - previous_linked_ids)
         if len(observed_new_ids) > expected_new_count:
             raise ValueError(f"Detected another upload during sync: {source.name}")
 
-        statuses = {
-            file_id: get_file_status(
-                open_webui_url,
-                open_webui_api_key,
-                file_id,
-            )
-            for file_id in observed_new_ids
-        }
-        failed_ids = [
-            file_id for file_id, status in statuses.items() if status == "failed"
-        ]
-        if failed_ids:
-            raise ValueError(
-                f"Open WebUI file processing failed: source={source.name} "
-                f"files={len(failed_ids)}"
-            )
-
-        completed_ids = {
-            file_id for file_id, status in statuses.items() if status == "completed"
-        }
-        if (
-            len(observed_new_ids) == expected_new_count
-            and completed_ids == observed_new_ids
-            and observed_new_ids <= linked_ids
-            and not pending_ids
-            and len(linked_ids) == expected_linked_count
-        ):
+        if pending_ids:
             LOGGER.info(
-                "Open WebUI registration completed: source=%s files=%d",
+                "Waiting for Open WebUI registration: source=%s "
+                "discovered=%d/%d pending=%d",
                 source.name,
+                len(observed_new_ids),
                 expected_new_count,
+                len(pending_ids),
             )
-            return
+            time.sleep(poll_interval_seconds)
+            continue
+
+        linked_ids = list_linked_file_ids(
+            open_webui_url,
+            open_webui_api_key,
+            source.knowledge_id,
+        )
+        new_linked_ids = linked_ids - previous_linked_ids
+        observed_new_ids.update(new_linked_ids)
+        if len(observed_new_ids) > expected_new_count:
+            raise ValueError(f"Detected another upload during sync: {source.name}")
+        if (
+            len(linked_ids) != expected_linked_count
+            or len(new_linked_ids) != expected_new_count
+        ):
+            raise ValueError(
+                f"Open WebUI file count mismatch: source={source.name} "
+                f"linked={len(linked_ids)}/{expected_linked_count} "
+                f"new={len(new_linked_ids)}/{expected_new_count}"
+            )
 
         LOGGER.info(
-            "Waiting for Open WebUI registration: source=%s discovered=%d/%d "
-            "completed=%d linked=%d pending=%d",
+            "Open WebUI registration completed: source=%s files=%d",
             source.name,
-            len(observed_new_ids),
             expected_new_count,
-            len(completed_ids),
-            len(observed_new_ids & linked_ids),
-            len(pending_ids),
         )
-        time.sleep(poll_interval_seconds)
+        return
 
     raise TimeoutError(f"Open WebUI registration timed out: {source.name}")
 

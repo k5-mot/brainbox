@@ -288,7 +288,6 @@ class TriggerScriptTest(unittest.TestCase):
                 "get_pending_file_ids",
                 side_effect=[{"pending-a"}, set()],
             ),
-            patch.object(TRIGGER, "get_file_status", return_value="processing"),
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1, 2]),
             patch.object(TRIGGER.time, "sleep") as sleep,
         ):
@@ -332,14 +331,9 @@ class TriggerScriptTest(unittest.TestCase):
         with (
             patch.object(
                 TRIGGER,
-                "get_file_status",
-                side_effect=["processing", "completed"],
-            ),
-            patch.object(
-                TRIGGER,
                 "list_linked_file_ids",
-                side_effect=[{"old"}, {"old", "new"}],
-            ),
+                return_value={"old", "new"},
+            ) as list_linked_file_ids,
             patch.object(
                 TRIGGER,
                 "get_pending_file_ids",
@@ -358,15 +352,42 @@ class TriggerScriptTest(unittest.TestCase):
                 timeout_seconds=10,
             )
 
-    def test_registration_rejects_failed_file(self) -> None:
-        """new fileの処理がfailedなら後続sourceへ進まず失敗する。"""
+        list_linked_file_ids.assert_called_once_with(
+            "http://open-webui",
+            "webui-secret",
+            "kb-a",
+        )
+
+    def test_registration_rejects_missing_link_after_pending_clears(self) -> None:
+        """pending解消後にlink不足があれば即座に失敗する。"""
         source = TRIGGER.SourceConfig("source-key", "source-a", "kb-a")
         with (
-            patch.object(TRIGGER, "list_linked_file_ids", return_value=set()),
-            patch.object(TRIGGER, "get_pending_file_ids", return_value={"new"}),
-            patch.object(TRIGGER, "get_file_status", return_value="failed"),
+            patch.object(TRIGGER, "list_linked_file_ids", return_value={"old"}),
+            patch.object(TRIGGER, "get_pending_file_ids", return_value=set()),
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1]),
-            self.assertRaisesRegex(ValueError, "Open WebUI file processing failed"),
+            self.assertRaisesRegex(ValueError, "file count mismatch"),
+        ):
+            TRIGGER.wait_for_open_webui_registration(
+                "http://open-webui",
+                "webui-secret",
+                source,
+                {"old"},
+                {"files_added": 1, "files_modified": 0, "files_deleted": 0},
+                poll_interval_seconds=1,
+                timeout_seconds=10,
+            )
+
+    def test_registration_rejects_concurrent_upload(self) -> None:
+        """期待数を超えるpending fileがあれば同時uploadとして失敗する。"""
+        source = TRIGGER.SourceConfig("source-key", "source-a", "kb-a")
+        with (
+            patch.object(
+                TRIGGER,
+                "get_pending_file_ids",
+                return_value={"new", "other"},
+            ),
+            patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1]),
+            self.assertRaisesRegex(ValueError, "Detected another upload"),
         ):
             TRIGGER.wait_for_open_webui_registration(
                 "http://open-webui",
