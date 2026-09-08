@@ -39,12 +39,12 @@ def load_script(module_name: str, relative_path: str) -> ModuleType:
 
 
 CLEANUP = load_script(
-    "remove_openwebui_stuck_files",
-    "scripts/oikb/remove_openwebui_stuck_files.py",
+    "remove_owui_pending",
+    "scripts/oikb/remove_owui_pending.py",
 )
 TRIGGER = load_script(
-    "trigger_oikb_syncs",
-    "scripts/oikb/trigger_oikb_syncs.py",
+    "trigger_oikb_sync",
+    "scripts/oikb/trigger_oikb_sync.py",
 )
 
 
@@ -162,7 +162,7 @@ class CleanupScriptTest(unittest.TestCase):
                     CLEANUP, "discover_knowledge_ids", return_value=[]
                 ) as discover,
             ):
-                result = CLEANUP.main(["remove_openwebui_stuck_files.py"])
+                result = CLEANUP.main(["remove_owui_pending.py"])
 
         self.assertEqual(result, 0)
         discover.assert_called_once_with("http://localhost:32001", "oikb-secret")
@@ -268,7 +268,7 @@ class TriggerScriptTest(unittest.TestCase):
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 10]),
             self.assertRaisesRegex(
                 TimeoutError,
-                r"Existing Open WebUI files timed out.*remove_openwebui_stuck_files\.py",
+                r"Existing Open WebUI files timed out.*remove_owui_pending\.py",
             ),
         ):
             TRIGGER.wait_for_existing_pending_files(
@@ -483,7 +483,7 @@ class TriggerScriptTest(unittest.TestCase):
                 patch.object(TRIGGER, "DEFAULT_ENV_FILE", env_file),
                 patch.object(TRIGGER, "trigger_all_syncs", return_value=2) as trigger,
             ):
-                result = TRIGGER.main(["trigger_oikb_syncs.py", "--once"])
+                result = TRIGGER.main(["trigger_oikb_sync.py", "--once"])
 
         self.assertEqual(result, 0)
         trigger.assert_called_once_with(

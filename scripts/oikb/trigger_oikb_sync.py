@@ -418,7 +418,7 @@ def wait_for_existing_pending_files(
 
     raise TimeoutError(
         f"Existing Open WebUI files timed out: source={source.name}. Run "
-        "python3 scripts/oikb/remove_openwebui_stuck_files.py "
+        "python3 scripts/oikb/remove_owui_pending.py "
         f"--knowledge-id {source.knowledge_id} first; review the dry-run before "
         "using --delete"
     )
