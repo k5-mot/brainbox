@@ -40,11 +40,11 @@ def load_script(module_name: str, relative_path: str) -> ModuleType:
 
 CLEANUP = load_script(
     "remove_openwebui_stuck_files",
-    "20-owui/oikb/remove_openwebui_stuck_files.py",
+    "scripts/oikb/remove_openwebui_stuck_files.py",
 )
 TRIGGER = load_script(
     "trigger_oikb_syncs",
-    "20-owui/oikb/trigger_oikb_syncs.py",
+    "scripts/oikb/trigger_oikb_syncs.py",
 )
 
 

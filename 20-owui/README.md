@@ -131,7 +131,7 @@ scriptはrepository rootの`.env`を起動時に読み込む。processへ設定�
 
 ```bash
 # 1時間以上更新されていない処理停止fileを表示する。
-python3 20-owui/oikb/remove_openwebui_stuck_files.py
+python3 scripts/oikb/remove_openwebui_stuck_files.py
 ```
 
 期待結果:
@@ -148,7 +148,7 @@ dry-run結果を確認した後、`--delete`を指定すると対象fileを削�
 
 ```bash
 # dry-runで確認した処理停止fileと関連vectorを削除する。
-python3 20-owui/oikb/remove_openwebui_stuck_files.py --delete
+python3 scripts/oikb/remove_openwebui_stuck_files.py --delete
 ```
 
 期待結果:
@@ -192,7 +192,7 @@ repository rootの`.env`はscript起動時に自動で読み込まれる。proce
 
 ```bash
 # OIKB_SOURCE_ORDERの順に同期し、全source完了後に1時間待つ。
-python3 20-owui/oikb/trigger_oikb_syncs.py
+python3 scripts/oikb/trigger_oikb_syncs.py
 ```
 
 期待結果:
@@ -210,7 +210,7 @@ python3 20-owui/oikb/trigger_oikb_syncs.py
 
 ```bash
 # OIKB_SOURCE_ORDERの全sourceを1回だけ逐次同期する。
-python3 20-owui/oikb/trigger_oikb_syncs.py --once
+python3 scripts/oikb/trigger_oikb_syncs.py --once
 ```
 
 ## References

@@ -211,7 +211,7 @@ RUSTFS_OPENWEBUI_KB_ID=<Open-WebUIで作成したKnowledge ID>
 sudo docker compose --env-file .env --profile owui up -d --build --no-deps oikb
 
 # sourceを.envのOIKB_SOURCE_ORDERに従って1回だけ逐次同期する。
-python3 20-owui/oikb/trigger_oikb_syncs.py --once
+python3 scripts/oikb/trigger_oikb_syncs.py --once
 ```
 
 期待結果:
@@ -241,7 +241,7 @@ sudo docker logs --tail 200 "${STACK_NAME}-oikb"
 sudo docker compose --env-file .env --profile owui up -d --no-deps --force-recreate oikb
 
 # 再作成したOIKBでsourceを1回だけ逐次同期する。
-python3 20-owui/oikb/trigger_oikb_syncs.py --once
+python3 scripts/oikb/trigger_oikb_syncs.py --once
 ```
 
 rollback:
