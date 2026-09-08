@@ -173,6 +173,7 @@ python3 scripts/oikb/remove_openwebui_stuck_files.py --delete
 4. fileがKnowledge Baseへlinkされ、pending fileが0件になる。
 
 OIKB内蔵schedulerが各sourceを並列起動しないよう、custom imageで内蔵schedulerを無効化している。変更後はOIKB imageを再buildする。
+OIKBのfile uploadはOpen WebUIのbackground処理を無効にし、1 fileのDocling解析、vector登録、Knowledge Baseへのlinkが完了してから次のfileを送信する。
 
 ```bash
 # 外部scheduler専用のOIKB imageをbuildし、OIKBだけ再作成する。

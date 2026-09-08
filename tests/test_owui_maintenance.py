@@ -498,5 +498,33 @@ class TriggerScriptTest(unittest.TestCase):
         )
 
 
+class OikbImagePatchTest(unittest.TestCase):
+    """OIKB imageへ適用するOpen WebUI連携patchを検証する。"""
+
+    def test_upload_waits_for_open_webui_processing(self) -> None:
+        """file uploadが解析とKnowledge登録の完了まで待つようpatchする。"""
+        patch_module = load_script(
+            "patch_openwebui_synchronous_upload",
+            "20-owui/oikb/patch-openwebui-synchronous-upload.py",
+        )
+        source = '''        resp = self._http.post(
+            "/files/",
+            files={"file": (filename, file_content)},
+            data={"metadata": json.dumps(metadata)},
+        )
+'''
+
+        patched = patch_module.patch_source(source)
+
+        self.assertIn(
+            'params={"process_in_background": "false"}',
+            patched,
+        )
+        containerfile = (REPO_ROOT / "20-owui/oikb/Containerfile").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("patch-openwebui-synchronous-upload.py", containerfile)
+
+
 if __name__ == "__main__":
     unittest.main()
