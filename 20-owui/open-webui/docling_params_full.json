@@ -10,7 +10,15 @@
         "jpn_vert",
         "eng"
     ],
-    "document_timeout": 21600,
+    "document_timeout": 36000,
+    "do_table_structure": "true",
+    "table_mode": "accurate",
+    "table_cell_matching": "true",
+    "do_code_enrichment": "true",
+    "do_formula_enrichment": "true",
+    "include_images": "true",
+    "include_page_images": "false",
+    "images_scale": "1.0",
     "do_picture_description": true,
     "picture_description_area_threshold": 0.1,
     "picture_description_custom_config": {
