@@ -287,8 +287,8 @@ class TriggerScriptTest(unittest.TestCase):
         with (
             patch.object(
                 TRIGGER,
-                "get_pending_file_ids",
-                side_effect=[{"pending-a"}, set()],
+                "get_pending_files_by_id",
+                side_effect=[{"pending-a": "pending.pdf"}, {}],
             ),
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1, 2]),
             patch.object(TRIGGER.time, "sleep") as sleep,
@@ -313,11 +313,18 @@ class TriggerScriptTest(unittest.TestCase):
         ]
         with (
             patch.object(TRIGGER, "get_source_states", side_effect=states),
+            patch.object(
+                TRIGGER,
+                "get_pending_files_by_id",
+                return_value={},
+            ) as get_pending_files_by_id,
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1, 2, 3]),
             patch.object(TRIGGER.time, "sleep"),
         ):
             result = TRIGGER.wait_for_oikb_sync(
                 "http://oikb",
+                "http://open-webui",
+                "webui-secret",
                 source,
                 previous_last_sync=90.0,
                 triggered_at=100.0,
@@ -326,6 +333,41 @@ class TriggerScriptTest(unittest.TestCase):
             )
 
         self.assertEqual(result["last_sync"], 101.0)
+        get_pending_files_by_id.assert_called_once()
+
+    def test_wait_for_oikb_sync_logs_pending_filename(self) -> None:
+        """OIKB同期待機中に現在処理中のfile名をlogへ出力する。"""
+        source = TRIGGER.SourceConfig("source-key", "source-a", "kb-a")
+        states = [
+            {"source-key": {"status": "running", "last_sync": None}},
+            {"source-key": {"status": "success", "last_sync": 101.0}},
+        ]
+        with (
+            patch.object(TRIGGER, "get_source_states", side_effect=states),
+            patch.object(
+                TRIGGER,
+                "get_pending_files_by_id",
+                return_value={"file-a": "manual.pdf"},
+            ),
+            patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1, 2]),
+            patch.object(TRIGGER.time, "sleep"),
+            self.assertLogs(TRIGGER.LOGGER, level="INFO") as logs,
+        ):
+            TRIGGER.wait_for_oikb_sync(
+                "http://oikb",
+                "http://open-webui",
+                "webui-secret",
+                source,
+                previous_last_sync=None,
+                triggered_at=100.0,
+                poll_interval_seconds=3,
+                timeout_seconds=10,
+            )
+
+        self.assertIn(
+            "Processing Open WebUI file: source=source-a file=manual.pdf",
+            logs.output[0],
+        )
 
     def test_registration_waits_for_completed_link_and_empty_pending(self) -> None:
         """new fileの処理完了、link、pending解消が揃うまで待つ。"""
@@ -338,8 +380,8 @@ class TriggerScriptTest(unittest.TestCase):
             ) as list_linked_file_ids,
             patch.object(
                 TRIGGER,
-                "get_pending_file_ids",
-                side_effect=[{"new"}, set()],
+                "get_pending_files_by_id",
+                side_effect=[{"new": "new.pdf"}, {}],
             ),
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1, 2]),
             patch.object(TRIGGER.time, "sleep"),
@@ -365,7 +407,7 @@ class TriggerScriptTest(unittest.TestCase):
         source = TRIGGER.SourceConfig("source-key", "source-a", "kb-a")
         with (
             patch.object(TRIGGER, "list_linked_file_ids", return_value={"old"}),
-            patch.object(TRIGGER, "get_pending_file_ids", return_value=set()),
+            patch.object(TRIGGER, "get_pending_files_by_id", return_value={}),
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1]),
             self.assertRaisesRegex(ValueError, "file count mismatch"),
         ):
@@ -385,8 +427,8 @@ class TriggerScriptTest(unittest.TestCase):
         with (
             patch.object(
                 TRIGGER,
-                "get_pending_file_ids",
-                return_value={"new", "other"},
+                "get_pending_files_by_id",
+                return_value={"new": "new.pdf", "other": "other.pdf"},
             ),
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1]),
             self.assertRaisesRegex(ValueError, "Detected another upload"),

@@ -102,6 +102,7 @@ python3 scripts/oikb/trigger_oikb_sync.py
 期待結果:
 
 - sourceごとにOIKB trigger、Open WebUI登録完了のlogが指定順で出力される。
+- OIKB同期待機中は、現在処理中のfile名が最大60秒間隔でlogへ出力される。
 - 全sourceの完了後から3600秒後に次の周期が始まる。
 
 失敗条件:

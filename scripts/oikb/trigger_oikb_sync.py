@@ -18,10 +18,12 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
+from remove_owui_pending import get_pending_files
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 TERMINAL_SYNC_STATUSES = frozenset({"success", "partial", "error", "cancelled"})
+FILE_LOG_INTERVAL_SECONDS = 60
 LOG_LEVEL_STYLES = (
     (logging.DEBUG, "DEBUG", "36"),
     (logging.INFO, "INFO", "32"),
@@ -205,6 +207,8 @@ def trigger_sync(
 
 def wait_for_oikb_sync(
     oikb_url: str,
+    open_webui_url: str,
+    open_webui_api_key: str,
     source: SourceConfig,
     previous_last_sync: float | None,
     triggered_at: float,
@@ -215,6 +219,8 @@ def wait_for_oikb_sync(
 
     Args:
         oikb_url: OIKBのbase URL。
+        open_webui_url: Open WebUIのbase URL。
+        open_webui_api_key: Open WebUI API key。
         source: 監視対象のsource設定。
         previous_last_sync: trigger直前の最終同期Unix時刻。
         triggered_at: trigger request開始時のUnix時刻。
@@ -229,6 +235,11 @@ def wait_for_oikb_sync(
         ValueError: sourceが消失、または同期がsuccess以外で終了した場合。
     """
     deadline = time.monotonic() + timeout_seconds
+    file_log_interval_polls = max(
+        1,
+        FILE_LOG_INTERVAL_SECONDS // poll_interval_seconds,
+    )
+    poll_count = 0
     while time.monotonic() < deadline:
         state = get_source_states(oikb_url).get(source.key)
         if state is None:
@@ -246,6 +257,19 @@ def wait_for_oikb_sync(
                     f"OIKB sync finished with status={status}: {source.name}"
                 )
             return state
+        if poll_count % file_log_interval_polls == 0:
+            pending_files = get_pending_files_by_id(
+                open_webui_url,
+                open_webui_api_key,
+                source.knowledge_id,
+            )
+            for filename in sorted(pending_files.values()):
+                LOGGER.info(
+                    "Processing Open WebUI file: source=%s file=%s",
+                    source.name,
+                    filename,
+                )
+        poll_count += 1
         time.sleep(poll_interval_seconds)
     raise TimeoutError(f"OIKB sync timed out: {source.name}")
 
@@ -343,12 +367,12 @@ def list_linked_file_ids(
         page += 1
 
 
-def get_pending_file_ids(
+def get_pending_files_by_id(
     open_webui_url: str,
     open_webui_api_key: str,
     knowledge_id: str,
-) -> set[str]:
-    """Knowledge Baseで処理中かつ未linkのfile IDを取得する。
+) -> dict[str, str]:
+    """Knowledge Baseで処理中かつ未linkのfile名をIDごとに取得する。
 
     Args:
         open_webui_url: Open WebUIのbase URL。
@@ -356,24 +380,27 @@ def get_pending_file_ids(
         knowledge_id: 対象Knowledge ID。
 
     Returns:
-        pendingまたはprocessing状態のfile ID set。
+        pendingまたはprocessing状態のfile IDをkey、表示名をvalueとするdict。
 
     Raises:
         TypeError: Open WebUI responseがlistでない場合。
+        HTTPError: Open WebUIがHTTP errorを返した場合。
+        URLError: Open WebUIへ接続できない場合。
     """
-    encoded_id = quote(knowledge_id, safe="")
-    payload = request_json(
-        "GET",
-        f"{open_webui_url.rstrip('/')}/api/v1/knowledge/{encoded_id}/files/pending",
+    result: dict[str, str] = {}
+    for item in get_pending_files(
+        open_webui_url,
         open_webui_api_key,
-    )
-    if not isinstance(payload, list):
-        raise TypeError("Open WebUI pending files response must be a list")
-    return {
-        item["id"]
-        for item in payload
-        if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]
-    }
+        knowledge_id,
+    ):
+        file_id = item.get("id")
+        if not isinstance(file_id, str) or not file_id:
+            continue
+        filename = item.get("filename")
+        result[file_id] = (
+            filename if isinstance(filename, str) and filename else file_id
+        )
+    return result
 
 
 def wait_for_existing_pending_files(
@@ -401,18 +428,19 @@ def wait_for_existing_pending_files(
     """
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        pending_ids = get_pending_file_ids(
+        pending_files = get_pending_files_by_id(
             open_webui_url,
             open_webui_api_key,
             source.knowledge_id,
         )
-        if not pending_ids:
+        if not pending_files:
             return
 
         LOGGER.info(
-            "Waiting for existing Open WebUI files: source=%s pending=%d",
+            "Waiting for existing Open WebUI files: source=%s pending=%d files=%s",
             source.name,
-            len(pending_ids),
+            len(pending_files),
+            ", ".join(sorted(pending_files.values())),
         )
         time.sleep(poll_interval_seconds)
 
@@ -460,11 +488,12 @@ def wait_for_open_webui_registration(
     deadline = time.monotonic() + timeout_seconds
 
     while time.monotonic() < deadline:
-        pending_ids = get_pending_file_ids(
+        pending_files = get_pending_files_by_id(
             open_webui_url,
             open_webui_api_key,
             source.knowledge_id,
         )
+        pending_ids = set(pending_files)
         observed_new_ids.update(pending_ids - previous_linked_ids)
         if len(observed_new_ids) > expected_new_count:
             raise ValueError(f"Detected another upload during sync: {source.name}")
@@ -472,11 +501,12 @@ def wait_for_open_webui_registration(
         if pending_ids:
             LOGGER.info(
                 "Waiting for Open WebUI registration: source=%s "
-                "discovered=%d/%d pending=%d",
+                "discovered=%d/%d pending=%d files=%s",
                 source.name,
                 len(observed_new_ids),
                 expected_new_count,
                 len(pending_ids),
+                ", ".join(sorted(pending_files.values())),
             )
             time.sleep(poll_interval_seconds)
             continue
@@ -567,6 +597,8 @@ def sync_source(
     LOGGER.info("Triggered OIKB sync: source=%s", source.name)
     terminal_state = wait_for_oikb_sync(
         oikb_url,
+        open_webui_url,
+        open_webui_api_key,
         source,
         previous_last_sync,
         triggered_at,
