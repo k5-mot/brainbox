@@ -129,3 +129,33 @@ python3 scripts/oikb/oikb_sync.py delete
 - Open WebUIのfileまたはvector削除APIがerrorを返した。
 
 削除したfileは復元できない。復旧が必要な場合は元sourceを保持した状態で`trigger`を再実行する。
+
+## Embeddingモデル変更後の再index
+
+Embeddingモデルを変更した場合、既存のKnowledge Baseは新しいmodelで再indexする。再indexはKnowledge Baseごとの既存vector collectionを削除し、現在のchunk設定とembedding modelで全fileを再処理する。Knowledge Baseへ属さないchat添付fileは対象外とする。
+
+```bash
+# 既存の全Knowledge Baseを現在のembedding modelで再indexする。
+sudo docker compose --env-file .env --profile owui exec -T oikb python -c "import os,urllib.request; r=urllib.request.Request(os.environ['OPEN_WEBUI_URL'].rstrip('/')+'/api/v1/knowledge/reindex',data=b'',headers={'Authorization':'Bearer '+os.environ['OPEN_WEBUI_API_KEY']},method='POST'); print(urllib.request.urlopen(r,timeout=21600).read().decode())"
+```
+
+期待結果:
+
+- commandが`true`を返す。
+- Open WebUI logに`Reindexing completed`が記録される。
+- Knowledge Base検索が新しいembedding modelで結果を返す。
+
+失敗条件:
+
+- commandがHTTP errorまたはtimeoutで終了する。
+- Open WebUI logに`Failed to process`が記録される。
+- reindex後のKnowledge Base検索が結果を返さない。
+
+rollback:
+
+- reindexにatomicなrollbackはない。失敗した場合は以前のembedding modelへ戻し、modelのhealthを確認してから同じcommandを再実行する。
+
+## References
+
+- [Open WebUI: Retrieval-Augmented Generation](https://docs.openwebui.com/features/chat-conversations/rag/)
+- [Open WebUI v0.11.3 knowledge router](https://github.com/open-webui/open-webui/blob/v0.11.3/backend/open_webui/routers/knowledge.py)
