@@ -16,6 +16,8 @@ api:
   provider: openai-compatible
   api_key: ${LITELLM_MASTER_KEY}
   base_url: http://litellm:4000/v1
+  extra_params:
+    reasoning_effort: low
 
 models:
   summarize: openai/gpt-oss:20b
