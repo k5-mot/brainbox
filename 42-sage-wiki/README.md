@@ -1,12 +1,12 @@
 # Sage Wiki
 
-Sage Wiki `v0.2.10`を、LLMによる知識コンパイル、検索、知識graph、Web UI、REST APIおよびMCP serverに使用する。`sage-wiki-ingester`が設定されたsourceを起動時とcronで同期し、`sage-wiki`の内蔵workerが変更を検知してcompileする。`sage-wiki`は生成結果のWeb UI、APIおよびMCPも公開する。両serviceは`sage-wiki-project` named volumeを共有する。
+Sage Wiki `v0.2.10`を、LLMによる知識コンパイル、検索、知識graph、Web UI、REST APIおよびMCP serverに使用する。`sage-wiki-ingester`が設定されたsourceを起動時とcronで同期し、状態確認用Web UIを公開する。`sage-wiki`の内蔵workerはsource変更を検知してcompileし、生成結果のWeb UI、APIおよびMCPを公開する。両serviceは`sage-wiki-project` named volumeを共有する。
 
 LLM処理は既存のLiteLLMへOpenAI互換APIで接続する。生成modelには`openai/gpt-oss:20b`、embedding modelには`Qwen/Qwen3-Embedding:0.6B`を使用する。credentialの値はrepositoryへ保存せず、`LITELLM_MASTER_KEY`環境変数から取得する。
 
 ## 設定
 
-Sage Wikiの運用設定は[config.yaml](https://github.com/k5-mot/inferlab/blob/main/42-sage-wiki/config.yaml)、source adapterとscheduleの設定は[ingester-config.yaml](https://github.com/k5-mot/inferlab/blob/main/42-sage-wiki/ingester-config.yaml)に置く。sourceごとに`adapter`、`run_on_start`および`schedule`を設定できる。設定を変更した場合はcontainerを再作成する。Web UIのBearer tokenは`.env`の`SAGE_WIKI_TOKEN`、DNS rebinding対策の許可hostは共通の`PUBLIC_HOST`から注入する。
+Sage Wikiの運用設定は[config.yaml](https://github.com/k5-mot/inferlab/blob/main/42-sage-wiki/config.yaml)、source adapterとscheduleの設定は[ingester-config.yaml](https://github.com/k5-mot/inferlab/blob/main/42-sage-wiki/ingester-config.yaml)に置く。sourceごとに`adapter`、`run_on_start`および`schedule`を設定できる。設定を変更した場合はcontainerを再作成する。Web UIのBearer tokenは`.env`の`SAGE_WIKI_TOKEN`、DNS rebinding対策の許可hostは共通の`PUBLIC_HOST`から注入する。`gpt-oss:20b`の要約では推論だけで出力上限を消費しないよう、`api.extra_params.reasoning_effort: low`を指定する。
 
 Ingesterのsource、Dockerfile、dependencyおよびtestは`42-sage-wiki/ingester/`に置く。他profileのbuild contextやruntime資材は参照しない。Composeはこのdirectoryからimageをlocal buildし、`ghcr.io/xoai/sage-wiki-ingester:v0.2.10`としてtag付けする。
 
@@ -73,6 +73,24 @@ docker compose --profile sage-wiki run --rm --no-deps sage-wiki-ingester node di
 
 - CouchDBへの接続、credential、LiveSync documentの復元またはvolumeへの書込に失敗する。
 
+## Ingester status
+
+`http://${PUBLIC_HOST}:34201/`でIngesterの稼働状態、sourceごとのschedule、実行中または最終同期の結果とerrorを確認できる。画面は10秒ごとに自動更新する。機械可読な同じ状態は`/api/status`で公開する。
+
+```bash
+# Ingester status APIを確認する。
+curl --fail "http://${PUBLIC_HOST}:34201/api/status"
+```
+
+期待結果:
+
+- Ingesterと各sourceの状態がJSONで返る。
+- CouchDB同期後は`documents`、`created`、`updated`、`unchanged`および`removed`件数が表示される。
+
+失敗基準:
+
+- HTTP statusが200以外、またはsourceの最終同期状態が`error`になる。
+
 ## 起動
 
 ```bash
@@ -87,6 +105,7 @@ docker compose --profile sage-wiki ps sage-wiki-ingester sage-wiki
 
 - `sage-wiki-ingester`と`sage-wiki`がhealthyになる。
 - Ingesterのlogに起動時同期の完了が記録される。
+- `http://${PUBLIC_HOST}:34201/`でIngester statusを表示できる。
 - `http://${PUBLIC_HOST}:34200/?token=${SAGE_WIKI_TOKEN}`でWeb UIを表示できる。
 
 失敗基準:

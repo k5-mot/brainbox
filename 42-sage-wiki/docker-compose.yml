@@ -10,8 +10,11 @@ services:
       - sage-wiki
     environment:
       CONFIG_PATH: /app/config.yaml
+      STATUS_PORT: "3333"
       COUCHDB_USERNAME: ${OBSIDIAN_COUCHDB_USER:-obs_couchdb_user}
       COUCHDB_PASSWORD: ${OBSIDIAN_COUCHDB_PASSWORD:-obs_couchdb_password}
+    ports:
+      - "34201:3333"
     volumes:
       - ./ingester-config.yaml:/app/config.yaml:ro
       - sage-wiki-project:/wiki
@@ -24,12 +27,20 @@ services:
     pids_limit: 256
     healthcheck:
       test:
-        - CMD-SHELL
-        - test -r /proc/1/cmdline && grep -q 'dist/main.js' /proc/1/cmdline
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3333/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+    labels:
+      - homepage.group=42-sage-wiki
+      - homepage.name=Sage Wiki Ingester
+      - homepage.href=http://${PUBLIC_HOST}:34201
+      - homepage.description=Source ingest status
+      - homepage.icon=/icons/llm-wiki.png
 
   sage-wiki:
     image: ghcr.io/xoai/sage-wiki:v0.2.10

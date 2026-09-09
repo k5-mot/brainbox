@@ -46,14 +46,17 @@ Docker Composeの`sage-wiki` profileが提供するsource ingest、知識コン�
 
 ### Requirement: sage-wiki profileの公開境界
 
-`sage-wiki` profileはWeb UI、REST APIおよびMCPをhostのTCP port `34200`で公開するものとする（MUST）。
+`sage-wiki` profileは生成WikiのWeb UI、REST APIおよびMCPをhostのTCP port `34200`で公開し、Ingester statusのWeb UIとJSON APIをTCP port `34201`で公開するものとする（MUST）。
 
 #### Scenario: 利用者またはclientが接続する
 
 - **WHEN** `sage-wiki`がhealth判定に成功する
 - **THEN** 定義された公開境界からWeb UIとAPIへ接続できる
+- **THEN** Ingesterの稼働状態、source設定および最終同期結果を確認できる
 - **THEN** 未定義のhost portを追加で公開しない
-- **THEN** 非loopback accessはBearer tokenと許可hostで保護される
+- **THEN** 生成Wikiの非loopback accessはBearer tokenと許可hostで保護される
+
+Ingester statusはread-onlyでcredentialとsource本文を含めてはならない（MUST NOT）。
 
 ### Requirement: LiteLLMとの連携
 
