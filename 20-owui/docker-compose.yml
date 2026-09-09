@@ -449,8 +449,9 @@ services:
         condition: service_healthy
 
   oikb:
+    image: ghcr.io/open-webui/oikb:0.4.0-patch2
     build:
-      context: ./oikb
+      context: ./oikb2
       dockerfile: Containerfile
     container_name: ${STACK_NAME}-oikb
     restart: unless-stopped
@@ -479,7 +480,7 @@ services:
     ports:
       - 32001:8080
     volumes:
-      - ./oikb/oikb.yaml:/app/.oikb.yaml:ro
+      - ./oikb2/oikb.yaml:/app/.oikb.yaml:ro
       - nextcloud:/nextcloud:ro
     networks:
       - internal-nw

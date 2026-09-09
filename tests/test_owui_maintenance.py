@@ -626,6 +626,11 @@ from typing import Any
             encoding="utf-8"
         )
         self.assertIn("patch-openwebui-sequential-registration.py", containerfile)
+        compose = (REPO_ROOT / "20-owui/docker-compose.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("context: ./oikb2", compose)
+        self.assertIn("./oikb2/oikb.yaml:/app/.oikb.yaml:ro", compose)
 
 
 class PendingCheckScriptTest(unittest.TestCase):

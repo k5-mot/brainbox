@@ -1,6 +1,6 @@
 # OIKB2
 
-OIKB2は、OIKB 0.4.0のfile uploadを1件ずつ完了させる検証用imageである。既定の`20-owui/oikb`は変更せず、Compose overrideを指定した場合だけOIKB2へ切り替える。
+OIKB2は、OIKB 0.4.0のfile uploadを1件ずつ完了させるcustom imageである。ルートのComposeは`20-owui/oikb2`をbuild contextとして使用する。
 
 各fileでは、次の処理を完了してから次のfileへ進む。
 
@@ -16,11 +16,8 @@ OIKB2は、OIKB 0.4.0のfile uploadを1件ずつ完了させる検証用imageで
 repository rootから実行する。
 
 ```bash
-# OIKB2を選択するoverrideを加えてimageをbuildする。
-sudo docker compose --env-file .env \
-  -f 20-owui/docker-compose.yml \
-  -f 20-owui/oikb2/docker-compose.override.yml \
-  --profile owui build oikb
+# OIKB2 imageをbuildする。
+sudo docker compose --env-file .env --profile owui build oikb
 ```
 
 期待結果:
@@ -38,8 +35,6 @@ sudo docker compose --env-file .env \
 ```bash
 # OIKB2 imageでOIKB serviceだけを再作成する。
 sudo docker compose --env-file .env \
-  -f 20-owui/docker-compose.yml \
-  -f 20-owui/oikb2/docker-compose.override.yml \
   --profile owui up -d --no-deps oikb
 ```
 
@@ -60,8 +55,6 @@ sudo docker compose --env-file .env \
 ```bash
 # 処理開始fileとKnowledge登録完了fileをリアルタイム表示する。
 sudo docker compose --env-file .env \
-  -f 20-owui/docker-compose.yml \
-  -f 20-owui/oikb2/docker-compose.override.yml \
   --profile owui logs -f oikb
 ```
 
@@ -88,15 +81,15 @@ python3 scripts/oikb/trigger_oikb_sync.py --once
 ## Rollback
 
 ```bash
-# overrideを外して既定OIKB imageをbuildする。
-sudo docker compose --env-file .env \
-  -f 20-owui/docker-compose.yml \
-  --profile owui build oikb
+# 既存OIKBのContainerfileを同じlocal tagへbuildする。
+sudo docker build \
+  -t ghcr.io/open-webui/oikb:0.4.0-patch2 \
+  -f 20-owui/oikb/Containerfile \
+  20-owui/oikb
 
-# 既定OIKB imageでserviceを再作成する。
+# build済みの既存OIKB imageでserviceを再作成する。
 sudo docker compose --env-file .env \
-  -f 20-owui/docker-compose.yml \
-  --profile owui up -d --no-deps oikb
+  --profile owui up -d --no-deps --no-build oikb
 ```
 
 期待結果:

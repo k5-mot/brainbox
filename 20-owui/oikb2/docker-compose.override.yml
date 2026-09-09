@@ -1,7 +1,0 @@
-services:
-  oikb:
-    build:
-      context: .
-      dockerfile: oikb2/Containerfile
-    volumes:
-      - ./oikb2/oikb.yaml:/app/.oikb.yaml:ro
