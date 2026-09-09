@@ -809,6 +809,28 @@ from typing import Any
         self.assertIn("context: ./oikb2", compose)
         self.assertIn("./oikb2/oikb.yaml:/app/.oikb.yaml:ro", compose)
 
+    def test_oikb2_dashboard_tracks_current_file_safely(self) -> None:
+        """OIKB2 dashboardが処理中のbasenameだけを安全に表示する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        patch_source = (
+            REPO_ROOT / "20-owui/oikb2/patch-daemon-external-scheduler.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('rsplit("/", 1)[-1]', patch_source)
+        self.assertIn('["current_file"] = current_file', patch_source)
+        self.assertIn('.pop("current_file", None)', patch_source)
+        self.assertIn("escapeHtml(s.current_file)", patch_source)
+        self.assertLess(
+            patch_source.index('["current_file"] = current_file'),
+            patch_source.index("finally:"),
+        )
+
 
 class CliHelpTest(unittest.TestCase):
     """統合CLIのhelpとsubcommandを検証する。"""

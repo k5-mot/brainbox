@@ -112,13 +112,13 @@ def _patch_sync_source(source: str) -> str:
 
 
 def _patch_source(source: str) -> str:
-    """daemonを外部scheduler専用APIとして動作させdry-runを補強する。
+    """daemonの外部scheduler化、dry-run補強、処理中file表示を追加する。
 
     Args:
         source: patch前のdaemon.py source code。
 
     Returns:
-        内蔵schedulerを停止しsource metadataを公開するsource code。
+        内蔵schedulerを停止しsource metadataと処理中fileを公開するsource code。
 
     Raises:
         RuntimeError: 想定したpatch対象が存在しない場合。
@@ -188,6 +188,91 @@ def _patch_source(source: str) -> str:
                 "summary": result.summary(),
             }
 """
+    client_before = """        client = _make_client(
+            url=entry.get("url"),
+            token=entry.get("token"),
+        )
+
+        mf = None
+"""
+    client_after = '''        client = _make_client(
+            url=entry.get("url"),
+            token=entry.get("token"),
+        )
+        original_upload_file = client.upload_file
+
+        def upload_file_with_state(
+            file_content: bytes,
+            filename: str,
+            upload_kb_id: str,
+            file_hash: str,
+            directory_id: str | None = None,
+        ) -> dict[str, Any]:
+            """処理中file名を公開し、元のupload処理を実行する。
+
+            Args:
+                file_content: uploadするfile内容。
+                filename: Open WebUIへ登録するfile名。
+                upload_kb_id: 登録先Knowledge Base ID。
+                file_hash: 差分判定に使うfile hash。
+                directory_id: 登録先directory ID。rootの場合はNone。
+
+            Returns:
+                元のupload処理が返すOpen WebUI response。
+
+            Side Effects:
+                処理中だけscheduler stateへbasenameを設定する。
+            """
+            current_file = filename.replace("\\\\", "/").rsplit("/", 1)[-1]
+            _scheduler_state.setdefault(source, {})["current_file"] = current_file
+            try:
+                return original_upload_file(
+                    file_content,
+                    filename,
+                    upload_kb_id,
+                    file_hash,
+                    directory_id,
+                )
+            finally:
+                _scheduler_state.setdefault(source, {}).pop("current_file", None)
+
+        client.upload_file = upload_file_with_state
+
+        mf = None
+'''
+    dashboard_style_before = """.row{padding:.5rem 0;border-bottom:1px solid #222;display:flex;gap:1rem;align-items:baseline}
+"""
+    dashboard_style_after = """.source{border-bottom:1px solid #222}
+.row{padding:.5rem 0;display:flex;gap:1rem;align-items:baseline}
+.current-file{color:#aaa;font-size:12px;margin:0 0 .5rem 28px;overflow-wrap:anywhere}
+"""
+    dashboard_script_before = """function ago(t){if(!t)return'-';const s=Math.floor(Date.now()/1000-t);if(s<60)return s+'s ago';if(s<3600)return(s/60|0)+'m ago';if(s<86400)return(s/3600|0)+'h ago';return(s/86400|0)+'d ago'}
+async function poll(){
+"""
+    dashboard_script_after = """function ago(t){if(!t)return'-';const s=Math.floor(Date.now()/1000-t);if(s<60)return s+'s ago';if(s<3600)return(s/60|0)+'m ago';if(s<86400)return(s/3600|0)+'h ago';return(s/86400|0)+'d ago'}
+/**
+ * dashboardへ表示する値をHTMLとして解釈されない文字列へ変換する。
+ * @param {*} value 表示する値。
+ * @returns {string} HTML特殊文字をescapeした文字列。
+ */
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function poll(){
+"""
+    dashboard_row_before = """   const e=s.errors&&s.errors.length?'<div class="error">'+s.errors[0]+'</div>':'';
+   return '<div class="row"><span class="dot '+c+'"></span><span class="name">'+(s.name||k)+'</span>'
+    +'<span class="dim">'+ago(s.last_sync)+'</span>'
+    +'<span class="dim">'+(s.duration_ms?s.duration_ms+'ms':'-')+'</span>'
+    +'<span class="dim">+'+( s.files_added||0)+' ~'+(s.files_modified||0)+' -'+(s.files_deleted||0)+'</span>'
+    +'<span class="dim">'+(s.next_sync_in||'')+'</span></div>'+e
+"""
+    dashboard_row_after = """   const e=s.errors&&s.errors.length?'<div class="error">'+s.errors[0]+'</div>':'';
+   const f=s.current_file?'<div class="current-file">└ '+escapeHtml(s.current_file)+'</div>':'';
+   return '<div class="source"><div class="row"><span class="dot '+c+'"></span><span class="name">'+(s.name||k)+'</span>'
+    +'<span class="dim">'+ago(s.last_sync)+'</span>'
+    +'<span class="dim">'+(s.duration_ms?s.duration_ms+'ms':'-')+'</span>'
+    +'<span class="dim">+'+( s.files_added||0)+' ~'+(s.files_modified||0)+' -'+(s.files_deleted||0)+'</span>'
+    +'<span class="dim">'+(s.next_sync_in||'')+'</span></div>'+f+e+'</div>'
+"""
 
     if initialization_before not in source:
         raise RuntimeError("oikb.daemon initialization patch target was not found")
@@ -195,6 +280,14 @@ def _patch_source(source: str) -> str:
         raise RuntimeError("oikb.daemon scheduler patch target was not found")
     if dry_run_before not in source:
         raise RuntimeError("oikb.daemon dry-run patch target was not found")
+    if client_before not in source:
+        raise RuntimeError("oikb.daemon client patch target was not found")
+    if dashboard_style_before not in source:
+        raise RuntimeError("oikb.daemon dashboard style patch target was not found")
+    if dashboard_script_before not in source:
+        raise RuntimeError("oikb.daemon dashboard script patch target was not found")
+    if dashboard_row_before not in source:
+        raise RuntimeError("oikb.daemon dashboard row patch target was not found")
 
     for status in ("status", '"cancelled"', '"error"'):
         target = state_before.replace("{status}", status)
@@ -220,6 +313,10 @@ def _patch_source(source: str) -> str:
             dry_run_after,
             1,
         )
+        .replace(client_before, client_after, 1)
+        .replace(dashboard_style_before, dashboard_style_after, 1)
+        .replace(dashboard_script_before, dashboard_script_after, 1)
+        .replace(dashboard_row_before, dashboard_row_after, 1)
     )
 
 

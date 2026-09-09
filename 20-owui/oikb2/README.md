@@ -72,6 +72,7 @@ python3 scripts/oikb/oikb_sync.py trigger
 
 - 同時に処理中となるfileは1件だけになる。
 - OIKB2のDocker logへ処理中のKnowledge Base IDとfile名が表示される。
+- OIKB WebUIの対象source行直下へ、処理中fileのbasenameが表示される。
 - fileごとに`completed`とKnowledge Baseへのlinkを確認してから次のfileへ進む。
 - 現在のKnowledge Baseの最後のfileを確認してから、次のKnowledge Baseを開始する。
 
@@ -80,6 +81,12 @@ python3 scripts/oikb/oikb_sync.py trigger
 - file statusが`failed`になる。
 - fileがKnowledge Baseのfile一覧へ現れずtimeoutになる。
 - 失敗後に同じKnowledge Baseの次fileまたは次のKnowledge Baseが開始される。
+
+## WebUIで処理中fileを確認
+
+OIKB WebUIを`http://${PUBLIC_HOST}:32001/`で開く。通常sync中は、対象source行の直下へ現在登録しているfileのbasenameを表示する。表示は既存のhealth checkを10秒間隔で更新するため、処理開始と完了から画面反映まで最大10秒かかる。
+
+file名はHTML escapeして表示する。directory pathは公開せず、dry-run、idle、成功、失敗、timeout後はfile名を表示しない。`/health`は認証なしで同じ値を返すため、OIKBの公開範囲は信頼済みnetworkへ限定しなければならない（MUST）。
 
 ## Rollback
 
