@@ -46,8 +46,14 @@ Docker Composeの`owui` profileが利用者と運用者へ提供する能力、�
 - **THEN** 各sourceについて今回のOIKB同期が`success`となりhistoryへ保存されるまで待機する
 - **THEN** 今回のfileがすべて`completed`となりKnowledge Baseへlinkされ、pending fileが0件になった後だけ次のsourceを開始する
 
+#### Scenario: file登録の初回処理が失敗する
+
+- **WHEN** Open WebUIへのfile登録が初回処理で失敗する
+- **THEN** file登録の初回失敗では、作成済みの失敗fileを削除して同じfileを1回だけretryする
+- **THEN** retryが成功するまで同じKnowledge Baseの次fileを開始しない
+
 #### Scenario: 同期または登録が失敗する
 
-- **WHEN** OIKBが成功以外で終了するか、Open WebUIのfile処理、link、件数照合またはtimeout判定が失敗する
+- **WHEN** OIKBが成功以外で終了するか、Open WebUIのfile処理、link、件数照合、timeout判定またはfile retryが失敗する
 - **THEN** 同じ周期の後続sourceを開始しない
 - **THEN** 失敗したsourceと判定理由をlogへ記録する

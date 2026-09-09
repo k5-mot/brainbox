@@ -75,6 +75,7 @@ python3 scripts/oikb/oikb_sync.py trigger
 期待結果:
 
 - 1 KBの全fileが`completed`になるまで次のKBはtriggerされない。
+- file登録が失敗した場合は、失敗fileを削除して同じfileを1回retryする。
 - OIKB Docker logに`OIKB2 processing file`と`OIKB2 registered file`がfileごとに同じ順で表示される。
 - 全KBの完了後、CLIが終了code 0で終了する。
 
@@ -82,7 +83,7 @@ python3 scripts/oikb/oikb_sync.py trigger
 
 - API key、source名、またはKnowledge IDが不正である。
 - OIKB同期、Open WebUI file処理、KBへのlink、またはpending解消が失敗する。
-- 対象KBのfileが`failed`になり、同じKBの次fileと後続KBを開始せず終了する。
+- 対象KBのfileがretry後も失敗し、同じKBの次fileと後続KBを開始せず終了する。
 
 継続実行が必要な場合だけ`--watch`を使用する。
 

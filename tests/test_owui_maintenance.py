@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import ModuleType
-from unittest.mock import call, patch
+from unittest.mock import Mock, call, patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -749,7 +749,14 @@ class OikbImagePatchTest(unittest.TestCase):
         self.assertIn("patch-openwebui-synchronous-upload.py", containerfile)
 
     def test_oikb2_waits_for_each_file_registration(self) -> None:
-        """OIKB2がfile処理とKnowledge linkを1件ずつ確認する。"""
+        """OIKB2がfile処理、retry、Knowledge linkを順に実行する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
         patch_module = load_script(
             "patch_openwebui_sequential_registration",
             "20-owui/oikb2/patch-openwebui-sequential-registration.py",
@@ -757,6 +764,7 @@ class OikbImagePatchTest(unittest.TestCase):
         source = '''import json
 from typing import Any
 
+class Client:
     def upload_file(
         self,
         file_content: bytes,
@@ -789,6 +797,10 @@ from typing import Any
         self.assertIn('params={"process_in_background": "false"}', patched)
         self.assertIn("/process/status", patched)
         self.assertIn('f"/knowledge/{kb_id}/files"', patched)
+        self.assertIn("for attempt in range(2):", patched)
+        self.assertIn('self._http.delete(f"/files/{file_id}")', patched)
+        self.assertIn("OIKB2 retrying file", patched)
+        self.assertIn("Open WebUI file retry failed", patched)
         self.assertLess(
             patched.index("OIKB2 processing file"),
             patched.index("self._http.post("),
@@ -808,6 +820,48 @@ from typing import Any
         compose = (REPO_ROOT / "20-owui/docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("context: ./oikb2", compose)
         self.assertIn("./oikb2/oikb.yaml:/app/.oikb.yaml:ro", compose)
+
+        namespace = {"__name__": "patched_oikb_client"}
+        exec(patched, namespace)
+        client = namespace["Client"]()
+        client._http = Mock()
+        client._http.timeout.read = 10
+
+        first_upload = Mock()
+        first_upload.json.return_value = {"id": "failed-file"}
+        second_upload = Mock()
+        second_upload.json.return_value = {"id": "completed-file"}
+        failed_status = Mock()
+        failed_status.json.return_value = {
+            "status": "failed",
+            "error": "embedding failed",
+        }
+        completed_status = Mock()
+        completed_status.json.return_value = {"status": "completed"}
+        knowledge_files = Mock()
+        knowledge_files.json.return_value = {
+            "items": [{"id": "completed-file"}],
+            "total": 1,
+        }
+        client._http.post.side_effect = [first_upload, second_upload]
+        client._http.get.side_effect = [
+            failed_status,
+            completed_status,
+            knowledge_files,
+        ]
+
+        with patch.object(namespace["time"], "sleep") as sleep:
+            result = client.upload_file(
+                b"content",
+                "manual.pdf",
+                "kb-a",
+                "hash-a",
+            )
+
+        self.assertEqual(result, {"id": "completed-file"})
+        self.assertEqual(client._http.post.call_count, 2)
+        client._http.delete.assert_called_once_with("/files/failed-file")
+        sleep.assert_called_once_with(2)
 
     def test_oikb2_dashboard_tracks_current_file_safely(self) -> None:
         """OIKB2 dashboardが処理中のbasenameだけを安全に表示する。

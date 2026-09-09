@@ -73,6 +73,7 @@ python3 scripts/oikb/oikb_sync.py trigger
 - 同時に処理中となるfileは1件だけになる。
 - OIKB2のDocker logへ処理中のKnowledge Base IDとfile名が表示される。
 - OIKB WebUIの対象source行直下へ、処理中fileのbasenameが表示される。
+- file登録に失敗した場合は、初回のfileを削除して同じfileを1回retryする。
 - fileごとに`completed`とKnowledge Baseへのlinkを確認してから次のfileへ進む。
 - 現在のKnowledge Baseの最後のfileを確認してから、次のKnowledge Baseを開始する。
 
@@ -80,6 +81,7 @@ python3 scripts/oikb/oikb_sync.py trigger
 
 - file statusが`failed`になる。
 - fileがKnowledge Baseのfile一覧へ現れずtimeoutになる。
+- retry後も同じfileの登録が失敗する。
 - 失敗後に同じKnowledge Baseの次fileまたは次のKnowledge Baseが開始される。
 
 ## WebUIで処理中fileを確認
