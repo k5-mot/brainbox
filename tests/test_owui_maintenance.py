@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
-import io
 import logging
 import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
 from pathlib import Path
 from types import ModuleType
-from unittest.mock import call, patch
+from unittest.mock import Mock, call, patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,110 +38,149 @@ def load_script(module_name: str, relative_path: str) -> ModuleType:
     return module
 
 
-CLEANUP = load_script(
-    "remove_owui_pending",
-    "scripts/oikb/remove_owui_pending.py",
-)
-TRIGGER = load_script(
-    "trigger_oikb_sync",
-    "scripts/oikb/trigger_oikb_sync.py",
-)
+SYNC = load_script("oikb_sync", "scripts/oikb/oikb_sync.py")
+CLEANUP = SYNC
+TRIGGER = SYNC
 
 
 class CleanupScriptTest(unittest.TestCase):
     """停止ファイルcleanupの選択と削除を検証する。"""
 
-    def test_discover_knowledge_ids_includes_source_without_history(self) -> None:
-        """historyがないsourceもhealthのkb_idから検出する。"""
-        health = {
-            "sources": {
-                "source-a": {"kb_id": "kb-a"},
-                "source-b": {"kb_id": "kb-b"},
-            }
-        }
-        history = {
-            "entries": [
-                {"source": "source-a", "kb_id": "kb-a"},
-            ]
-        }
-        with patch.object(CLEANUP, "request_json", side_effect=[health, history]):
-            result = CLEANUP.discover_knowledge_ids("http://oikb", "secret")
+    def test_list_open_webui_files_uses_search_api(self) -> None:
+        """Open WebUIの全file検索APIをcontentなしで呼び出す。"""
+        response = [{"id": "file-a"}, {"id": "file-b"}]
+        with patch.object(
+            CLEANUP,
+            "request_json",
+            return_value=response,
+        ) as request_json:
+            result = CLEANUP.list_open_webui_files("http://open-webui", "secret")
 
-        self.assertEqual(result, ["kb-a", "kb-b"])
+        self.assertEqual(result, response)
+        request_json.assert_called_once_with(
+            "GET",
+            "http://open-webui/api/v1/files/search?"
+            "filename=%2A&content=false&skip=0&limit=1000",
+            "secret",
+        )
 
-    def test_discover_knowledge_ids_deduplicates_history(self) -> None:
-        """現行sourceのKnowledge IDだけを履歴から重複なく取得する。"""
-        health = {"sources": {"source-a": {}, "source-b": {}}}
-        history = {
-            "entries": [
-                {"source": "source-b", "kb_id": "kb-b"},
-                {"source": "source-a", "kb_id": "kb-a"},
-                {"source": "source-b", "kb_id": "kb-b"},
-                {"source": "removed-source", "kb_id": "obsolete-kb"},
-                {"source": "source-a", "kb_id": ""},
-            ]
-        }
-        with patch.object(CLEANUP, "request_json", side_effect=[health, history]):
-            result = CLEANUP.discover_knowledge_ids("http://oikb", "secret")
-
-        self.assertEqual(result, ["kb-a", "kb-b"])
-
-    def test_select_stuck_files_requires_old_pending_status(self) -> None:
-        """境界時刻以前のpending/processingだけを削除候補にする。"""
+    def test_select_delete_candidates_uses_pending_and_failed_only(self) -> None:
+        """対象KBのpending/failedだけを削除候補にする。"""
         files = [
-            {"id": "old-pending", "data": {"status": "pending"}, "updated_at": 100},
             {
-                "id": "old-processing",
-                "data": {"status": "processing"},
-                "created_at": 200,
+                "id": "pending",
+                "data": {"status": "pending"},
+                "meta": {"data": {"knowledge_id": "kb-a"}},
             },
-            {"id": "new-pending", "data": {"status": "pending"}, "updated_at": 301},
-            {"id": "failed", "data": {"status": "failed"}, "updated_at": 100},
-            {"id": "missing-time", "data": {"status": "pending"}},
+            {
+                "id": "failed",
+                "data": {"status": "failed"},
+                "meta": {"knowledge_id": "kb-a"},
+            },
+            {
+                "id": "processing",
+                "data": {"status": "processing"},
+                "meta": {"data": {"knowledge_id": "kb-a"}},
+            },
+            {
+                "id": "completed",
+                "data": {"status": "completed"},
+                "meta": {"data": {"knowledge_id": "kb-a"}},
+            },
+            {
+                "id": "other-kb",
+                "data": {"status": "failed"},
+                "meta": {"data": {"knowledge_id": "kb-b"}},
+            },
         ]
 
-        result = CLEANUP.select_stuck_files(files, cutoff_epoch=300)
+        result = CLEANUP.select_delete_candidates(files, ["kb-a"])
+
+        self.assertEqual([item["id"] for item in result], ["pending", "failed"])
+
+    def test_empty_knowledge_ids_selects_files_from_all_kbs(self) -> None:
+        """Knowledge ID未指定時に全KBの停止fileを選択する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        files = [
+            {
+                "id": "kb-a-pending",
+                "data": {"status": "pending"},
+                "meta": {"data": {"knowledge_id": "kb-a"}},
+            },
+            {
+                "id": "kb-b-failed",
+                "data": {"status": "failed"},
+                "meta": {"data": {"knowledge_id": "kb-b"}},
+            },
+            {
+                "id": "kb-c-completed",
+                "data": {"status": "completed"},
+                "meta": {"data": {"knowledge_id": "kb-c"}},
+            },
+        ]
+
+        result = CLEANUP.select_delete_candidates(files, [])
 
         self.assertEqual(
-            [item["id"] for item in result], ["old-pending", "old-processing"]
+            [item["id"] for item in result],
+            ["kb-a-pending", "kb-b-failed"],
         )
 
     def test_cleanup_dry_run_does_not_delete(self) -> None:
         """dry-runでは停止ファイルを検出しても削除APIを呼ばない。"""
-        files = [{"id": "stuck", "data": {"status": "pending"}, "updated_at": 1}]
+        files = [
+            {
+                "id": "stuck",
+                "filename": "stuck.pdf",
+                "data": {"status": "pending"},
+                "meta": {"data": {"knowledge_id": "kb-a"}},
+            }
+        ]
         with (
-            patch.object(CLEANUP, "get_pending_files", return_value=files),
+            patch.object(CLEANUP, "list_open_webui_files", return_value=files),
             patch.object(CLEANUP, "delete_file") as delete_file,
-            patch.object(CLEANUP.time, "time", return_value=10_000),
+            self.assertLogs(CLEANUP.LOGGER, level="WARNING") as logs,
         ):
             count = CLEANUP.cleanup_stuck_files(
                 "http://open-webui",
                 "secret",
                 ["kb-a"],
-                min_age_seconds=3600,
-                delete=False,
+                dry_run=True,
             )
 
         self.assertEqual(count, 1)
+        self.assertIn("file=stuck.pdf", logs.output[0])
         delete_file.assert_not_called()
 
     def test_cleanup_delete_calls_file_api(self) -> None:
         """削除指定時は選択された停止ファイルだけを削除する。"""
         files = [
-            {"id": "stuck", "data": {"status": "processing"}, "updated_at": 1},
-            {"id": "active", "data": {"status": "processing"}, "updated_at": 9_999},
+            {
+                "id": "stuck",
+                "data": {"status": "failed"},
+                "meta": {"data": {"knowledge_id": "kb-a"}},
+            },
+            {
+                "id": "active",
+                "data": {"status": "processing"},
+                "meta": {"data": {"knowledge_id": "kb-a"}},
+            },
         ]
         with (
-            patch.object(CLEANUP, "get_pending_files", return_value=files),
+            patch.object(CLEANUP, "list_open_webui_files", return_value=files),
             patch.object(CLEANUP, "delete_file") as delete_file,
-            patch.object(CLEANUP.time, "time", return_value=10_000),
         ):
             count = CLEANUP.cleanup_stuck_files(
                 "http://open-webui",
                 "secret",
                 ["kb-a"],
-                min_age_seconds=3600,
-                delete=True,
+                dry_run=False,
             )
 
         self.assertEqual(count, 1)
@@ -154,20 +191,26 @@ class CleanupScriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             env_file = Path(temporary_directory) / ".env"
             env_file.write_text(
-                "OPEN_WEBUI_API_KEY=webui-secret\nOIKB_API_KEY=oikb-secret\n",
+                "OPEN_WEBUI_API_URL=http://webui.example\n"
+                "OPEN_WEBUI_API_KEY=webui-secret\n"
+                "OIKB_API_URL=http://oikb.example\n"
+                "OIKB_API_KEY=oikb-secret\n",
                 encoding="utf-8",
             )
             with (
                 patch.dict(os.environ, {}, clear=True),
                 patch.object(CLEANUP, "DEFAULT_ENV_FILE", env_file),
-                patch.object(
-                    CLEANUP, "discover_knowledge_ids", return_value=[]
-                ) as discover,
+                patch.object(CLEANUP, "cleanup_stuck_files", return_value=0) as cleanup,
             ):
-                result = CLEANUP.main(["remove_owui_pending.py"])
+                result = CLEANUP.main(["oikb_sync.py", "delete", "--dry-run"])
 
         self.assertEqual(result, 0)
-        discover.assert_called_once_with("http://localhost:32001", "oikb-secret")
+        cleanup.assert_called_once_with(
+            "http://webui.example",
+            "webui-secret",
+            [],
+            True,
+        )
 
     def test_env_file_does_not_override_process_environment(self) -> None:
         """dotenvの値よりprocessへ設定済みの環境変数を優先する。"""
@@ -219,6 +262,44 @@ class TriggerScriptTest(unittest.TestCase):
             ],
         )
 
+    def test_discover_sources_uses_all_sources_when_order_is_empty(self) -> None:
+        """source順未指定時にOIKBの全sourceを設定順で解決する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        states = {
+            "nextcloud:/oikb": {
+                "name": "nextcloud-documents",
+                "kb_id": "kb-nextcloud",
+            },
+            "s3://bucket": {
+                "name": "rustfs-documents",
+                "kb_id": "kb-rustfs",
+            },
+        }
+        with patch.object(TRIGGER, "get_source_states", return_value=states):
+            result = TRIGGER.discover_sources("http://oikb", [])
+
+        self.assertEqual(
+            result,
+            [
+                TRIGGER.SourceConfig(
+                    "nextcloud:/oikb",
+                    "nextcloud-documents",
+                    "kb-nextcloud",
+                ),
+                TRIGGER.SourceConfig(
+                    "s3://bucket",
+                    "rustfs-documents",
+                    "kb-rustfs",
+                ),
+            ],
+        )
+
     def test_trigger_sync_posts_encoded_source_name(self) -> None:
         """source名をURL encodeしKnowledge IDが一致するtriggerを受理する。"""
         source = TRIGGER.SourceConfig("source-key", "source name", "kb-a")
@@ -234,6 +315,32 @@ class TriggerScriptTest(unittest.TestCase):
             "http://oikb/sync/source%20name",
             "secret",
         )
+
+    def test_preview_sync_logs_unsynced_files(self) -> None:
+        """trigger dry-runは追加または更新が必要なfileをlogへ記録する。"""
+        source = TRIGGER.SourceConfig("source-key", "source name", "kb-a")
+        response = {
+            "dry_run": True,
+            "kb_id": "kb-a",
+            "result": {
+                "added": 1,
+                "modified": 1,
+                "unmodified": 2,
+                "files": [
+                    {"action": "added", "path": "new.pdf"},
+                    {"action": "modified", "path": "docs/updated.pdf"},
+                ],
+            },
+        }
+        with (
+            patch.object(TRIGGER, "request_json", return_value=response),
+            self.assertLogs(TRIGGER.LOGGER, level="INFO") as logs,
+        ):
+            count = TRIGGER.preview_sync("http://oikb", "secret", source)
+
+        self.assertEqual(count, 2)
+        self.assertTrue(any("file=new.pdf" in line for line in logs.output))
+        self.assertTrue(any("file=docs/updated.pdf" in line for line in logs.output))
 
     def test_logging_uses_colored_english_level_names(self) -> None:
         """terminalでは英語のlog level名にANSI colorを付ける。"""
@@ -270,7 +377,7 @@ class TriggerScriptTest(unittest.TestCase):
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 10]),
             self.assertRaisesRegex(
                 TimeoutError,
-                r"Existing Open WebUI files timed out.*remove_owui_pending\.py",
+                r"Existing Open WebUI files timed out.*oikb_sync\.py delete",
             ),
         ):
             TRIGGER.wait_for_existing_pending_files(
@@ -375,9 +482,12 @@ class TriggerScriptTest(unittest.TestCase):
         with (
             patch.object(
                 TRIGGER,
-                "list_linked_file_ids",
-                return_value={"old", "new"},
-            ) as list_linked_file_ids,
+                "list_knowledge_files",
+                return_value=[
+                    {"id": "old", "data": {"status": "completed"}},
+                    {"id": "new", "data": {"status": "completed"}},
+                ],
+            ) as list_knowledge_files,
             patch.object(
                 TRIGGER,
                 "get_pending_files_by_id",
@@ -396,17 +506,49 @@ class TriggerScriptTest(unittest.TestCase):
                 timeout_seconds=10,
             )
 
-        list_linked_file_ids.assert_called_once_with(
+        list_knowledge_files.assert_called_once_with(
             "http://open-webui",
             "webui-secret",
             "kb-a",
         )
 
+    def test_registration_waits_until_every_kb_file_is_completed(self) -> None:
+        """KB内にprocessing fileがあればcompletedになるまで待つ。"""
+        source = TRIGGER.SourceConfig("source-key", "source-a", "kb-a")
+        with (
+            patch.object(TRIGGER, "get_pending_files_by_id", return_value={}),
+            patch.object(
+                TRIGGER,
+                "list_knowledge_files",
+                side_effect=[
+                    [{"id": "old", "data": {"status": "processing"}}],
+                    [{"id": "old", "data": {"status": "completed"}}],
+                ],
+            ),
+            patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1, 2]),
+            patch.object(TRIGGER.time, "sleep") as sleep,
+        ):
+            TRIGGER.wait_for_open_webui_registration(
+                "http://open-webui",
+                "webui-secret",
+                source,
+                {"old"},
+                {"files_added": 0, "files_modified": 0, "files_deleted": 0},
+                poll_interval_seconds=1,
+                timeout_seconds=10,
+            )
+
+        sleep.assert_called_once_with(1)
+
     def test_registration_rejects_missing_link_after_pending_clears(self) -> None:
         """pending解消後にlink不足があれば即座に失敗する。"""
         source = TRIGGER.SourceConfig("source-key", "source-a", "kb-a")
         with (
-            patch.object(TRIGGER, "list_linked_file_ids", return_value={"old"}),
+            patch.object(
+                TRIGGER,
+                "list_knowledge_files",
+                return_value=[{"id": "old", "data": {"status": "completed"}}],
+            ),
             patch.object(TRIGGER, "get_pending_files_by_id", return_value={}),
             patch.object(TRIGGER.time, "monotonic", side_effect=[0, 1]),
             self.assertRaisesRegex(ValueError, "file count mismatch"),
@@ -517,7 +659,9 @@ class TriggerScriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             env_file = Path(temporary_directory) / ".env"
             env_file.write_text(
+                "OIKB_API_URL=http://oikb.example\n"
                 "OIKB_API_KEY=oikb-secret\n"
+                "OPEN_WEBUI_API_URL=http://webui.example\n"
                 "OPEN_WEBUI_API_KEY=webui-secret\n"
                 "OIKB_SOURCE_ORDER=rustfs-documents,nextcloud-documents\n",
                 encoding="utf-8",
@@ -527,7 +671,42 @@ class TriggerScriptTest(unittest.TestCase):
                 patch.object(TRIGGER, "DEFAULT_ENV_FILE", env_file),
                 patch.object(TRIGGER, "trigger_all_syncs", return_value=2) as trigger,
             ):
-                result = TRIGGER.main(["trigger_oikb_sync.py", "--once"])
+                result = TRIGGER.main(["oikb_sync.py", "trigger"])
+
+        self.assertEqual(result, 0)
+        trigger.assert_called_once_with(
+            "http://oikb.example",
+            "oikb-secret",
+            "http://webui.example",
+            "webui-secret",
+            ["rustfs-documents", "nextcloud-documents"],
+            3,
+            21600,
+            21600,
+        )
+
+    def test_main_without_source_order_triggers_all_sources(self) -> None:
+        """OIKB_SOURCE_ORDER未設定時に全source検出を指示する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            env_file = Path(temporary_directory) / ".env"
+            env_file.write_text(
+                "OIKB_API_KEY=oikb-secret\n"
+                "OPEN_WEBUI_API_KEY=webui-secret\n",
+                encoding="utf-8",
+            )
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch.object(TRIGGER, "DEFAULT_ENV_FILE", env_file),
+                patch.object(TRIGGER, "trigger_all_syncs", return_value=2) as trigger,
+            ):
+                result = TRIGGER.main(["oikb_sync.py", "trigger"])
 
         self.assertEqual(result, 0)
         trigger.assert_called_once_with(
@@ -535,7 +714,7 @@ class TriggerScriptTest(unittest.TestCase):
             "oikb-secret",
             "http://localhost:32000",
             "webui-secret",
-            ["rustfs-documents", "nextcloud-documents"],
+            [],
             3,
             21600,
             21600,
@@ -551,12 +730,12 @@ class OikbImagePatchTest(unittest.TestCase):
             "patch_openwebui_synchronous_upload",
             "20-owui/oikb/patch-openwebui-synchronous-upload.py",
         )
-        source = '''        resp = self._http.post(
+        source = """        resp = self._http.post(
             "/files/",
             files={"file": (filename, file_content)},
             data={"metadata": json.dumps(metadata)},
         )
-'''
+"""
 
         patched = patch_module.patch_source(source)
 
@@ -569,54 +748,172 @@ class OikbImagePatchTest(unittest.TestCase):
         )
         self.assertIn("patch-openwebui-synchronous-upload.py", containerfile)
 
+    def test_oikb2_waits_for_each_file_registration(self) -> None:
+        """OIKB2がfile処理、retry、Knowledge linkを順に実行する。
 
-class PendingCheckScriptTest(unittest.TestCase):
-    """Open WebUI pending file一覧の分類と表示を検証する。"""
+        Args:
+            なし。
 
-    def test_pending_files_are_classified_and_displayed(self) -> None:
-        """経過時間でstuckとpendingを分類しTSVで表示する。"""
-        check = load_script(
-            "check_owui_pending",
-            "scripts/oikb/check_owui_pending.py",
+        Returns:
+            なし。
+        """
+        patch_module = load_script(
+            "patch_openwebui_sequential_registration",
+            "20-owui/oikb2/patch-openwebui-sequential-registration.py",
         )
-        files = [
-            {
-                "id": "old-file",
-                "filename": "old.pdf",
-                "data": {"status": "processing"},
-                "updated_at": 100,
-            },
-            {
-                "id": "new-file",
-                "filename": "new.pdf",
-                "data": {"status": "pending"},
-                "created_at": 900,
-            },
+        source = '''import json
+from typing import Any
+
+class Client:
+    def upload_file(
+        self,
+        file_content: bytes,
+        filename: str,
+        kb_id: str,
+        file_hash: str,
+        directory_id: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /files/ — upload a single file to the KB."""
+
+        metadata: dict[str, Any] = {
+            "knowledge_id": kb_id,
+            "file_hash": file_hash,
+        }
+        if directory_id:
+            metadata["directory_id"] = directory_id
+
+        resp = self._http.post(
+            "/files/",
+            files={"file": (filename, file_content)},
+            data={"metadata": json.dumps(metadata)},
+        )
+        resp.raise_for_status()
+        return resp.json()
+'''
+
+        patched = patch_module.patch_source(source)
+
+        self.assertIn("import logging", patched)
+        self.assertIn('params={"process_in_background": "false"}', patched)
+        self.assertIn("/process/status", patched)
+        self.assertIn('f"/knowledge/{kb_id}/files"', patched)
+        self.assertIn("for attempt in range(2):", patched)
+        self.assertIn('self._http.delete(f"/files/{file_id}")', patched)
+        self.assertIn("OIKB2 retrying file", patched)
+        self.assertIn("Open WebUI file retry failed", patched)
+        self.assertLess(
+            patched.index("OIKB2 processing file"),
+            patched.index("self._http.post("),
+        )
+        self.assertLess(
+            patched.index('status == "completed" and linked'),
+            patched.index("OIKB2 registered file"),
+        )
+        self.assertLess(
+            patched.index("OIKB2 registered file"),
+            patched.index("return uploaded_file"),
+        )
+        containerfile = (REPO_ROOT / "20-owui/oikb2/Containerfile").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("patch-openwebui-sequential-registration.py", containerfile)
+        compose = (REPO_ROOT / "20-owui/docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("context: ./oikb2", compose)
+        self.assertIn("./oikb2/oikb.yaml:/app/.oikb.yaml:ro", compose)
+
+        namespace = {"__name__": "patched_oikb_client"}
+        exec(patched, namespace)
+        client = namespace["Client"]()
+        client._http = Mock()
+        client._http.timeout.read = 10
+
+        first_upload = Mock()
+        first_upload.json.return_value = {"id": "failed-file"}
+        second_upload = Mock()
+        second_upload.json.return_value = {"id": "completed-file"}
+        failed_status = Mock()
+        failed_status.json.return_value = {
+            "status": "failed",
+            "error": "embedding failed",
+        }
+        completed_status = Mock()
+        completed_status.json.return_value = {"status": "completed"}
+        knowledge_files = Mock()
+        knowledge_files.json.return_value = {
+            "items": [{"id": "completed-file"}],
+            "total": 1,
+        }
+        client._http.post.side_effect = [first_upload, second_upload]
+        client._http.get.side_effect = [
+            failed_status,
+            completed_status,
+            knowledge_files,
         ]
-        with (
-            patch.object(check, "get_pending_files", return_value=files),
-            patch.object(check.time, "time", return_value=1_000),
-        ):
-            records = check.collect_pending_files(
-                "http://open-webui",
-                "secret",
-                ["kb-a"],
-                stuck_after_seconds=300,
+
+        with patch.object(namespace["time"], "sleep") as sleep:
+            result = client.upload_file(
+                b"content",
+                "manual.pdf",
+                "kb-a",
+                "hash-a",
             )
 
-        output = io.StringIO()
-        with redirect_stdout(output):
-            check.write_pending_files(records)
+        self.assertEqual(result, {"id": "completed-file"})
+        self.assertEqual(client._http.post.call_count, 2)
+        client._http.delete.assert_called_once_with("/files/failed-file")
+        sleep.assert_called_once_with(2)
 
-        self.assertEqual([record["state"] for record in records], ["stuck", "pending"])
-        self.assertEqual(
-            output.getvalue().splitlines(),
-            [
-                "state\tstatus\tage_seconds\tknowledge_id\tfile_id\tfilename",
-                "stuck\tprocessing\t900\tkb-a\told-file\told.pdf",
-                "pending\tpending\t100\tkb-a\tnew-file\tnew.pdf",
-            ],
+    def test_oikb2_dashboard_tracks_current_file_safely(self) -> None:
+        """OIKB2 dashboardが処理中のbasenameだけを安全に表示する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        patch_source = (
+            REPO_ROOT / "20-owui/oikb2/patch-daemon-external-scheduler.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('rsplit("/", 1)[-1]', patch_source)
+        self.assertIn('["current_file"] = current_file', patch_source)
+        self.assertIn('.pop("current_file", None)', patch_source)
+        self.assertIn("escapeHtml(s.current_file)", patch_source)
+        self.assertLess(
+            patch_source.index('["current_file"] = current_file'),
+            patch_source.index("finally:"),
         )
+
+    def test_oikb2_upload_state_wrapper_preserves_kb_id_keyword(self) -> None:
+        """upload wrapperがupstreamのkb_id keyword契約を維持する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        patch_source = (
+            REPO_ROOT / "20-owui/oikb2/patch-daemon-external-scheduler.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("            kb_id: str,", patch_source)
+        self.assertNotIn("upload_kb_id", patch_source)
+
+
+class CliHelpTest(unittest.TestCase):
+    """統合CLIのhelpとsubcommandを検証する。"""
+
+    def test_help_lists_trigger_delete_and_dry_run(self) -> None:
+        """rootと各subcommandのhelpに必要な操作を表示する。"""
+        parser = SYNC.build_parser()
+        subparsers = parser._subparsers._group_actions[0].choices
+
+        self.assertIn("trigger", parser.format_help())
+        self.assertIn("delete", parser.format_help())
+        self.assertIn("--dry-run", subparsers["trigger"].format_help())
+        self.assertIn("--dry-run", subparsers["delete"].format_help())
 
 
 if __name__ == "__main__":

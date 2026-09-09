@@ -26,6 +26,7 @@ const profileSpecifications = [
   "specs/profile-rag/spec",
   "specs/profile-ragflow/spec",
   "specs/profile-registry/spec",
+  "specs/profile-sage-wiki/spec",
   "specs/profile-translate/spec",
   "specs/profile-xwiki/spec",
   "specs/profile-zulip/spec",

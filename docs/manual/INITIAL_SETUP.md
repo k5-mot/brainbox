@@ -148,11 +148,16 @@ sudo docker compose --env-file .env --profile dify ps dify-api dify-web dify-ngi
 
 ```dotenv
 OPEN_WEBUI_API_KEY=<Open-WebUIで作成したAPI key>
+OPEN_WEBUI_API_URL=http://localhost:32000
 OIKB_API_KEY=<OIKBに設定するAPI key>
+OIKB_API_URL=http://localhost:32001
 OIKB_SOURCE_ORDER=nextcloud-documents,rustfs-documents
 NEXTCLOUD_OPENWEBUI_KB_ID=<Open-WebUIで作成したKnowledge ID>
 RUSTFS_OPENWEBUI_KB_ID=<Open-WebUIで作成したKnowledge ID>
 ```
+
+`OIKB_SOURCE_ORDER`は任意である。未設定時、`trigger`はOIKBの`/health`から
+全sourceを取得してOIKB設定順に処理し、`delete`はOpen WebUIの全KBを処理する。
 
 期待結果:
 
@@ -162,8 +167,10 @@ RUSTFS_OPENWEBUI_KB_ID=<Open-WebUIで作成したKnowledge ID>
 失敗条件:
 
 - `OPEN_WEBUI_API_KEY`が空のままになっている。
+- `OPEN_WEBUI_API_URL`からOpen WebUI APIへ接続できない。
 - `OIKB_API_KEY`が空のままになっている。
-- `OIKB_SOURCE_ORDER`のsource名または順序が誤っている。
+- `OIKB_API_URL`からOIKB APIへ接続できない。
+- 設定した`OIKB_SOURCE_ORDER`のsource名または順序が誤っている。
 - `NEXTCLOUD_OPENWEBUI_KB_ID`が空のままになっている。
 - `RUSTFS_OPENWEBUI_KB_ID`が空のままになっている。
 
@@ -210,14 +217,14 @@ RUSTFS_OPENWEBUI_KB_ID=<Open-WebUIで作成したKnowledge ID>
 # 内蔵schedulerを無効化したOIKB imageをbuildして設定を反映する。
 sudo docker compose --env-file .env --profile owui up -d --build --no-deps oikb
 
-# sourceを.envのOIKB_SOURCE_ORDERに従って1回だけ逐次同期する。
-python3 scripts/oikb/trigger_oikb_sync.py --once
+# source順の設定時は指定順、未設定時はOIKBの全sourceを1回だけ逐次同期する。
+python3 scripts/oikb/oikb_sync.py trigger
 ```
 
 期待結果:
 
 - OIKBがhealthyになる。
-- scriptのlogにsourceごとのtriggerとOpen-WebUI登録完了が設定順で出る。
+- scriptのlogにsourceごとのtriggerとOpen-WebUI登録完了が処理順で出る。
 - Open-WebUIのKnowledgeに配置したfileが登録される。
 
 失敗条件:
@@ -241,7 +248,7 @@ sudo docker logs --tail 200 "${STACK_NAME}-oikb"
 sudo docker compose --env-file .env --profile owui up -d --no-deps --force-recreate oikb
 
 # 再作成したOIKBでsourceを1回だけ逐次同期する。
-python3 scripts/oikb/trigger_oikb_sync.py --once
+python3 scripts/oikb/oikb_sync.py trigger
 ```
 
 rollback:

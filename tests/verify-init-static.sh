@@ -260,6 +260,13 @@ verify_compose_config() {
     -f 41-llmwiki/docker-compose.offline.yml \
     --profile llmwiki \
     config --services >/dev/null
+
+  echo "compose config: profile=sage-wiki offline"
+  SAGE_WIKI_NPM_PACKAGES_DIR=/srv/npm docker compose \
+    -f docker-compose.yml \
+    -f 42-sage-wiki/docker-compose.offline.yml \
+    --profile sage-wiki \
+    config --services >/dev/null
 }
 
 verify_shell_syntax

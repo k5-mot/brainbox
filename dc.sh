@@ -29,6 +29,7 @@ readonly PROFILES=(
 #   "gitlab"
   "obsidian"
   "llmwiki"
+  "sage-wiki"
 #   "o11y"
   "langfuse"
 )

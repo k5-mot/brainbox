@@ -21,7 +21,7 @@ x-external-dns-stabilizer: &external-dns-stabilizer
 services:
   open-webui:
     <<: *external-dns-stabilizer
-    image: ghcr.io/open-webui/open-webui:0.11.1
+    image: ghcr.io/open-webui/open-webui:0.11.3
     container_name: ${STACK_NAME}-open-webui
     restart: unless-stopped
     profiles:
@@ -217,6 +217,7 @@ services:
       ### For Qdrant (Vector DB)
       VECTOR_DB: qdrant
       QDRANT_API_KEY: ${QDRANT_API_KEY:-sk-qdrant-api-key}
+      QDRANT_COLLECTION_PREFIX: ${QDRANT_COLLECTION_PREFIX:-open-webui-qwen3-1024}
       QDRANT_URI: http://qdrant:6333
       ### For SearXNG (Web Search)
       ENABLE_WEB_SEARCH: "true"
@@ -316,7 +317,7 @@ services:
     <<: *external-dns-stabilizer
     build:
       context: ./mcpo
-    image: ${STACK_NAME}-mcpo
+    image: ghcr.io/open-webui/mcpo:main-patch2
     container_name: ${STACK_NAME}-mcpo
     restart: unless-stopped
     profiles:
@@ -449,8 +450,9 @@ services:
         condition: service_healthy
 
   oikb:
+    image: ghcr.io/open-webui/oikb:0.4.0-patch2
     build:
-      context: ./oikb
+      context: ./oikb2
       dockerfile: Containerfile
     container_name: ${STACK_NAME}-oikb
     restart: unless-stopped
@@ -479,7 +481,7 @@ services:
     ports:
       - 32001:8080
     volumes:
-      - ./oikb/oikb.yaml:/app/.oikb.yaml:ro
+      - ./oikb2/oikb.yaml:/app/.oikb.yaml:ro
       - nextcloud:/nextcloud:ro
     networks:
       - internal-nw

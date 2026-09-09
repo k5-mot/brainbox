@@ -1,5 +1,6 @@
 services:
   llmwiki:
+    image: ghcr.io/atomicstrata/llm-wiki-compiler:v1.1.0
     build:
       context: ./runtime
       dockerfile: Dockerfile
@@ -37,6 +38,7 @@ services:
       - homepage.icon=/icons/llm-wiki.png
 
   llmwiki-ingester:
+    image: ghcr.io/atomicstrata/llm-wiki-ingester:v1.1.0
     build:
       context: ./ingester
       dockerfile: Dockerfile

@@ -6,7 +6,7 @@ services:
       args:
         AION_VERSION: 2.2.1
         AION_COMMIT: dc47f4a0173ff506b08f13c97b10944d61e422d5
-    image: localhost/inferlab/aion:2.2.1
+    image: ghcr.io/aion/aion:2.2.1
     container_name: ${STACK_NAME}-aion
     restart: unless-stopped
     profiles:

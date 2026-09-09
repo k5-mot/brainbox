@@ -18,6 +18,7 @@ const componentReadmes = [
   "zulip/README",
   "gitlab/README",
   "llmwiki/README",
+  "sage-wiki/README",
   "o11y/README",
   "langfuse/README",
   "scripts/README",

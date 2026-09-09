@@ -270,7 +270,7 @@ services:
   vllm-embedding:
     image: docker.io/vllm/vllm-openai-cpu:v0.28.0-x86_64
     container_name: ${STACK_NAME}-vllm-embedding
-    restart: on-failure:3
+    restart: unless-stopped
     ipc: host
     profiles:
       - inference
@@ -302,6 +302,7 @@ services:
     environment:
       HF_HUB_DISABLE_TELEMETRY: "1"
       VLLM_NO_USAGE_STATS: "1"
+      VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: ${VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS:-3600}
       VLLM_CPU_OMP_THREADS_BIND: "0-3"
       MKL_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
@@ -330,7 +331,7 @@ services:
   vllm-reranking:
     image: docker.io/vllm/vllm-openai-cpu:v0.28.0-x86_64
     container_name: ${STACK_NAME}-vllm-reranking
-    restart: on-failure:3
+    restart: unless-stopped
     ipc: host
     profiles:
       - inference
@@ -365,6 +366,7 @@ services:
       HF_HUB_DISABLE_TELEMETRY: "1"
       VLLM_NO_USAGE_STATS: "1"
       # VLLM_CPU_KVCACHE_SPACE: "1"
+      VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: ${VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS:-3600}
       VLLM_CPU_OMP_THREADS_BIND: "4-5"
       MKL_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
