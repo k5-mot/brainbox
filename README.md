@@ -4,7 +4,7 @@
 
 ### Profile一覧
 
-`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`translate`、`owui`、`nextcloud`、`obsidian`、`llmwiki`、`langfuse` です。その他のprofileは必要な場合に個別に指定します。
+`dc.sh up` の標準起動に含まれる profile は `common`、`keycloak`、`pubnet`、`inference`、`rag`、`translate`、`owui`、`nextcloud`、`obsidian`、`llmwiki`、`sage-wiki`、`langfuse` です。その他のprofileは必要な場合に個別に指定します。
 
 | Profile | Compose file | 用途 |
 | --- | --- | --- |
@@ -33,6 +33,7 @@
 | `obsidian` | `40-obsidian/docker-compose.yml` | Obsidian同期用CouchDB |
 | `openkb` | `40-obsidian/docker-compose.yml` | 旧OpenKB向けCouchDB互換profile |
 | `llmwiki` | `41-llmwiki/docker-compose.yml` | LLM Wiki compilerとviewer |
+| `sage-wiki` | `42-sage-wiki/docker-compose.yml` | Sage Wiki compiler、knowledge graphとviewer |
 | `o11y` | `50-o11y/docker-compose.yml` | 監視 |
 | `o11y-gpu` | `50-o11y/docker-compose.yml` | NVIDIA GPU metrics |
 | `langfuse` | `51-langfuse/docker-compose.yml` | Langfuse |
@@ -125,6 +126,8 @@
 | `obsidian`, `llmwiki`, `openkb` | `couchdb` | `34000` | `40-obsidian/docker-compose.yml` |
 | `llmwiki` | `llmwiki` | `34100` | `41-llmwiki/docker-compose.yml` |
 | `llmwiki` | `llmwiki-ingester` | - | `41-llmwiki/docker-compose.yml` |
+| `sage-wiki` | `sage-wiki-init` | - | `42-sage-wiki/docker-compose.yml` |
+| `sage-wiki` | `sage-wiki` | `34200` | `42-sage-wiki/docker-compose.yml` |
 | `o11y` | `grafana` | `35000` | `50-o11y/docker-compose.yml` |
 | `o11y` | `prometheus` | `35001` | `50-o11y/docker-compose.yml` |
 | `o11y` | `node-exporter` | - | `50-o11y/docker-compose.yml` |
@@ -177,6 +180,7 @@
 - [Zulip](33-zulip/README.md)
 - [GitLab](34-gitlab/README.md)
 - [LLM Wiki](41-llmwiki/README.md)
+- [Sage Wiki](42-sage-wiki/README.md)
 - [Observability](50-o11y/README.md)
 - [Langfuse](51-langfuse/README.md)
 

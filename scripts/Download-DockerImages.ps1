@@ -135,6 +135,8 @@ $Packages = @(
     "docker.io/library/couchdb:3.5.2.1",
     ### 41-llmwiki
     "docker.io/library/node:24.20.0-bookworm-slim",
+    ### 42-sage-wiki
+    "ghcr.io/xoai/sage-wiki:v0.2.10",
     ### 50-o11y
     "docker.io/grafana/grafana:13.2.0",
     "docker.io/prom/prometheus:v3.14.0",

@@ -1,0 +1,74 @@
+services:
+  sage-wiki-init:
+    image: ghcr.io/xoai/sage-wiki:v0.2.10
+    container_name: ${STACK_NAME}-sage-wiki-init
+    restart: "no"
+    profiles:
+      - sage-wiki
+    command:
+      - init
+      - .
+      - --model
+      - openai/gpt-oss:20b
+    volumes:
+      - sage-wiki-project:/wiki
+      - ./config.yaml:/wiki/config.yaml:ro
+    networks:
+      - internal-nw
+    mem_limit: 512m
+    pids_limit: 128
+
+  sage-wiki:
+    image: ghcr.io/xoai/sage-wiki:v0.2.10
+    container_name: ${STACK_NAME}-sage-wiki
+    restart: unless-stopped
+    profiles:
+      - sage-wiki
+    command:
+      - serve
+      - --ui
+      - --bind
+      - 0.0.0.0
+      - --port
+      - "3333"
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key}
+      SAGE_WIKI_TOKEN: ${SAGE_WIKI_TOKEN:-sk-sage-wiki-token}
+      SAGE_WIKI_ALLOWED_HOST: ${PUBLIC_HOST}
+      TZ: Asia/Tokyo
+    ports:
+      - "34200:3333"
+    volumes:
+      - sage-wiki-project:/wiki
+      - ./config.yaml:/wiki/config.yaml:ro
+    networks:
+      - internal-nw
+    depends_on:
+      sage-wiki-init:
+        condition: service_completed_successfully
+    mem_limit: 2g
+    pids_limit: 512
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --no-verbose
+        - --tries=1
+        - --spider
+        - http://127.0.0.1:3333/
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - homepage.group=42-sage-wiki
+      - homepage.name=Sage Wiki
+      - homepage.href=http://${PUBLIC_HOST}:34200
+      - homepage.description=LLM knowledge graph and wiki
+      - homepage.icon=/icons/llm-wiki.png
+
+volumes:
+  sage-wiki-project:
+
+networks:
+  internal-nw:
