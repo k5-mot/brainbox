@@ -9,7 +9,9 @@ OIKB2は、OIKB 0.4.0のfile uploadを1件ずつ完了させるcustom imageで�
 3. file statusが`completed`であることを確認する。
 4. file IDが対象Knowledge Baseのfile一覧に現れることを確認する。
 
-`oikb.yaml`の`concurrency: 1`と既存の外部schedulerを併用する。最後のfileの登録確認後にOIKB同期が終了し、`scripts/oikb/trigger_oikb_sync.py`が次のKnowledge Baseを開始する。
+`oikb.yaml`の`concurrency: 1`と既存の外部schedulerを併用する。最後のfileの登録確認後にOIKB同期が終了し、`scripts/oikb/oikb_sync.py trigger`が次のKnowledge Baseを開始する。
+
+外部scheduler patchは、OIKBのdry-run responseへ`added`と`modified`のfile詳細を追加し、dry-run終了後のsource状態を`idle`へ戻す。これにより`oikb_sync.py trigger --dry-run`が未同期fileをlogへ表示した後も、通常のtriggerを開始できる。
 
 ## ビルド
 
@@ -24,6 +26,7 @@ sudo docker compose --env-file .env --profile owui build oikb
 
 - base imageのOIKB 0.4.0へ3つのpatchが適用される。
 - `patch-openwebui-sequential-registration.py`がerrorなく終了する。
+- dry-run responseが未同期fileのactionとpathを返す。
 
 失敗条件:
 
@@ -62,7 +65,7 @@ sudo docker compose --env-file .env \
 
 ```bash
 # 設定順に1周期だけ同期する。
-python3 scripts/oikb/trigger_oikb_sync.py --once
+python3 scripts/oikb/oikb_sync.py trigger
 ```
 
 期待結果:
@@ -76,7 +79,7 @@ python3 scripts/oikb/trigger_oikb_sync.py --once
 
 - file statusが`failed`になる。
 - fileがKnowledge Baseのfile一覧へ現れずtimeoutになる。
-- 失敗後に次のKnowledge Baseの同期が開始される。
+- 失敗後に同じKnowledge Baseの次fileまたは次のKnowledge Baseが開始される。
 
 ## Rollback
 

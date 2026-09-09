@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""OIKB sourceをOpen WebUIの登録完了まで逐次的に同期する。"""
+"""OIKB同期とOpen WebUI停止ファイル削除を一元管理する。"""
 
 from __future__ import annotations
 
@@ -18,11 +17,11 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
-from remove_owui_pending import get_pending_files
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 TERMINAL_SYNC_STATUSES = frozenset({"success", "partial", "error", "cancelled"})
+DELETE_STATUSES = frozenset({"pending", "failed"})
 FILE_LOG_INTERVAL_SECONDS = 60
 LOG_LEVEL_STYLES = (
     (logging.DEBUG, "DEBUG", "36"),
@@ -105,6 +104,202 @@ def request_json(method: str, url: str, token: str | None = None) -> Any:
     )
     with urlopen(request, timeout=60) as response:
         return json.load(response)
+
+
+def get_pending_files(
+    open_webui_url: str,
+    open_webui_api_key: str,
+    knowledge_id: str,
+) -> list[dict[str, Any]]:
+    """Knowledge Baseへ未接続の処理中ファイルを取得する。
+
+    Args:
+        open_webui_url: Open WebUIのbase URL。
+        open_webui_api_key: Open WebUI API key。
+        knowledge_id: 検索対象のKnowledge ID。
+
+    Returns:
+        pending file responseのlist。
+
+    Raises:
+        TypeError: Open WebUI responseがlistでない場合。
+        HTTPError: Open WebUIがHTTP errorを返した場合。
+        URLError: Open WebUIへ接続できない場合。
+    """
+    encoded_id = quote(knowledge_id, safe="")
+    url = f"{open_webui_url.rstrip('/')}/api/v1/knowledge/{encoded_id}/files/pending"
+    payload = request_json("GET", url, open_webui_api_key)
+    if not isinstance(payload, list):
+        raise TypeError("Open WebUI pending files response must be a list")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def list_open_webui_files(
+    open_webui_url: str,
+    open_webui_api_key: str,
+) -> list[dict[str, Any]]:
+    """Open WebUIで参照可能な全fileをpage単位で取得する。
+
+    Args:
+        open_webui_url: Open WebUIのbase URL。
+        open_webui_api_key: Open WebUI API key。
+
+    Returns:
+        Open WebUI file responseのlist。
+
+    Raises:
+        TypeError: Open WebUI responseの形式が不正な場合。
+        HTTPError: Open WebUIがHTTP errorを返した場合。
+        URLError: Open WebUIへ接続できない場合。
+    """
+    files: list[dict[str, Any]] = []
+    limit = 1000
+    while True:
+        query = urlencode(
+            {
+                "filename": "*",
+                "content": "false",
+                "skip": len(files),
+                "limit": limit,
+            }
+        )
+        try:
+            payload = request_json(
+                "GET",
+                f"{open_webui_url.rstrip('/')}/api/v1/files/search?{query}",
+                open_webui_api_key,
+            )
+        except HTTPError as error:
+            if error.code == 404:
+                return files
+            raise
+        if not isinstance(payload, list):
+            raise TypeError("Open WebUI file search response must be a list")
+        items = [item for item in payload if isinstance(item, dict)]
+        files.extend(items)
+        if len(payload) < limit:
+            return files
+
+
+def get_file_knowledge_id(file_item: dict[str, Any]) -> str | None:
+    """Open WebUI file metadataからKnowledge IDを取得する。
+
+    Args:
+        file_item: Open WebUI file response。
+
+    Returns:
+        metadataに含まれるKnowledge ID。取得できない場合はNone。
+    """
+    metadata = file_item.get("meta")
+    if not isinstance(metadata, dict):
+        return None
+    nested = metadata.get("data")
+    knowledge_id = nested.get("knowledge_id") if isinstance(nested, dict) else None
+    if not isinstance(knowledge_id, str) or not knowledge_id:
+        knowledge_id = metadata.get("knowledge_id")
+    return knowledge_id if isinstance(knowledge_id, str) and knowledge_id else None
+
+
+def select_delete_candidates(
+    files: Sequence[dict[str, Any]],
+    knowledge_ids: Sequence[str],
+) -> list[dict[str, Any]]:
+    """全KBのfileからpendingまたはfailedだけを削除候補にする。
+
+    Args:
+        files: Open WebUI file response。
+        knowledge_ids: 対象Knowledge ID。空の場合は全Knowledge Baseを対象にする。
+
+    Returns:
+        対象KBに属する`pending`または`failed`状態のfile list。
+    """
+    target_ids = set(knowledge_ids)
+    selected: list[dict[str, Any]] = []
+    for file_item in files:
+        data = file_item.get("data")
+        status = data.get("status") if isinstance(data, dict) else None
+        knowledge_id = get_file_knowledge_id(file_item)
+        if (
+            status in DELETE_STATUSES
+            and knowledge_id is not None
+            and (not target_ids or knowledge_id in target_ids)
+            and isinstance(file_item.get("id"), str)
+            and file_item["id"]
+        ):
+            selected.append(file_item)
+    return selected
+
+
+def delete_file(open_webui_url: str, open_webui_api_key: str, file_id: str) -> None:
+    """Open WebUI APIを使ってfileと関連vectorを削除する。
+
+    Args:
+        open_webui_url: Open WebUIのbase URL。
+        open_webui_api_key: Open WebUI API key。
+        file_id: 削除対象のfile ID。
+
+    Returns:
+        なし。
+
+    Raises:
+        HTTPError: Open WebUIがHTTP errorを返した場合。
+        URLError: Open WebUIへ接続できない場合。
+
+    Side Effects:
+        Open WebUIのfile、Knowledge関連、vectorを削除する。
+    """
+    encoded_id = quote(file_id, safe="")
+    request_json(
+        "DELETE",
+        f"{open_webui_url.rstrip('/')}/api/v1/files/{encoded_id}",
+        open_webui_api_key,
+    )
+
+
+def cleanup_stuck_files(
+    open_webui_url: str,
+    open_webui_api_key: str,
+    knowledge_ids: Sequence[str],
+    dry_run: bool,
+) -> int:
+    """全Knowledge Baseのpendingとfailed fileを検出または削除する。
+
+    Args:
+        open_webui_url: Open WebUIのbase URL。
+        open_webui_api_key: Open WebUI API key。
+        knowledge_ids: 調査対象のKnowledge ID。空の場合は全KBを対象にする。
+        dry_run: Trueの場合は対象fileをlogへ記録するだけにする。
+
+    Returns:
+        検出した削除候補file数。
+
+    Raises:
+        HTTPError: Open WebUIがHTTP errorを返した場合。
+        URLError: Open WebUIへ接続できない場合。
+
+    Side Effects:
+        dry_runがFalseの場合、停止fileと関連データを削除する。
+    """
+    candidates = select_delete_candidates(
+        list_open_webui_files(open_webui_url, open_webui_api_key),
+        knowledge_ids,
+    )
+    for file_item in candidates:
+        file_id = file_item["id"]
+        status = file_item["data"]["status"]
+        knowledge_id = get_file_knowledge_id(file_item)
+        filename = file_item.get("filename", "")
+        LOGGER.warning(
+            "Delete candidate: knowledge_id=%s file_id=%s status=%s file=%s",
+            knowledge_id,
+            file_id,
+            status,
+            filename,
+        )
+        if not dry_run:
+            delete_file(open_webui_url, open_webui_api_key, file_id)
+            LOGGER.info("Deleted a stuck file: file_id=%s", file_id)
+    return len(candidates)
 
 
 def get_source_states(oikb_url: str) -> dict[str, dict[str, Any]]:
@@ -203,6 +398,96 @@ def trigger_sync(
     if payload.get("kb_id") != source.knowledge_id:
         raise ValueError(f"OIKB trigger returned an unexpected KB ID: {source.name}")
     return payload
+
+
+def preview_sync(
+    oikb_url: str,
+    oikb_api_key: str,
+    source: SourceConfig,
+) -> int:
+    """指定したOIKB sourceの未同期fileをdry-runで記録する。
+
+    Args:
+        oikb_url: OIKBのbase URL。
+        oikb_api_key: OIKB API key。
+        source: 確認対象のsource設定。
+
+    Returns:
+        追加または更新が必要なfile数。
+
+    Raises:
+        ValueError: OIKBのdry-run responseが不正な場合。
+        HTTPError: OIKBがHTTP errorを返した場合。
+        URLError: OIKBへ接続できない場合。
+
+    Side Effects:
+        OIKBへdry-runを要求し、未同期fileをlogへ記録する。
+    """
+    encoded_name = quote(source.name, safe="")
+    payload = request_json(
+        "POST",
+        f"{oikb_url.rstrip('/')}/sync/{encoded_name}?dry_run=true",
+        oikb_api_key,
+    )
+    if (
+        not isinstance(payload, dict)
+        or payload.get("dry_run") is not True
+        or payload.get("kb_id") != source.knowledge_id
+        or not isinstance(payload.get("result"), dict)
+    ):
+        raise ValueError(f"OIKB dry-run returned an invalid response: {source.name}")
+    result = payload["result"]
+    files = result.get("files")
+    changed_count = int(result.get("added", 0)) + int(result.get("modified", 0))
+    if not isinstance(files, list):
+        if changed_count:
+            raise ValueError(
+                "OIKB dry-run response has no file details; rebuild the OIKB2 image"
+            )
+        files = []
+    for file_item in files:
+        if not isinstance(file_item, dict):
+            continue
+        LOGGER.info(
+            "Unsynced OIKB file: source=%s action=%s file=%s",
+            source.name,
+            file_item.get("action", "unknown"),
+            file_item.get("path", "unknown"),
+        )
+    LOGGER.info(
+        "OIKB dry-run completed: source=%s unsynced=%d unchanged=%s",
+        source.name,
+        changed_count,
+        result.get("unmodified", 0),
+    )
+    return changed_count
+
+
+def preview_all_syncs(
+    oikb_url: str,
+    oikb_api_key: str,
+    source_order: Sequence[str],
+) -> int:
+    """全sourceの未同期fileを変更せずに記録する。
+
+    Args:
+        oikb_url: OIKBのbase URL。
+        oikb_api_key: OIKB API key。
+        source_order: source nameの確認順。空ならOIKB設定順。
+
+    Returns:
+        全sourceの追加または更新が必要なfile数。
+
+    Raises:
+        ValueError: source設定またはdry-run responseが不正な場合。
+
+    Side Effects:
+        OIKBへsourceごとのdry-runを要求し、未同期fileをlogへ記録する。
+    """
+    return sum(
+        preview_sync(oikb_url, oikb_api_key, source)
+        for source in discover_sources(oikb_url, source_order)
+    )
 
 
 def wait_for_oikb_sync(
@@ -326,6 +611,43 @@ def wait_for_sync_history(
     raise TimeoutError(f"OIKB sync history timed out: {source.name}")
 
 
+def list_knowledge_files(
+    open_webui_url: str,
+    open_webui_api_key: str,
+    knowledge_id: str,
+) -> list[dict[str, Any]]:
+    """Knowledge Baseへlink済みの全fileを取得する。
+
+    Args:
+        open_webui_url: Open WebUIのbase URL。
+        open_webui_api_key: Open WebUI API key。
+        knowledge_id: 対象Knowledge ID。
+
+    Returns:
+        link済みfile responseのlist。
+
+    Raises:
+        TypeError: Open WebUI responseの形式が不正な場合。
+    """
+    files: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        query = urlencode({"page": page, "limit": 1000})
+        payload = request_json(
+            "GET",
+            f"{open_webui_url.rstrip('/')}/api/v1/knowledge/{quote(knowledge_id, safe='')}/files?{query}",
+            open_webui_api_key,
+        )
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            raise TypeError("Open WebUI knowledge files response must contain items")
+        items = [item for item in payload["items"] if isinstance(item, dict)]
+        files.extend(items)
+        total = payload.get("total")
+        if not items or not isinstance(total, int) or len(files) >= total:
+            return files
+        page += 1
+
+
 def list_linked_file_ids(
     open_webui_url: str,
     open_webui_api_key: str,
@@ -340,31 +662,16 @@ def list_linked_file_ids(
 
     Returns:
         link済みfile IDのset。
-
-    Raises:
-        TypeError: Open WebUI responseの形式が不正な場合。
     """
-    file_ids: set[str] = set()
-    page = 1
-    while True:
-        query = urlencode({"page": page, "limit": 1000})
-        payload = request_json(
-            "GET",
-            f"{open_webui_url.rstrip('/')}/api/v1/knowledge/{quote(knowledge_id, safe='')}/files?{query}",
+    return {
+        item["id"]
+        for item in list_knowledge_files(
+            open_webui_url,
             open_webui_api_key,
+            knowledge_id,
         )
-        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
-            raise TypeError("Open WebUI knowledge files response must contain items")
-        items = [item for item in payload["items"] if isinstance(item, dict)]
-        file_ids.update(
-            item["id"]
-            for item in items
-            if isinstance(item.get("id"), str) and item["id"]
-        )
-        total = payload.get("total")
-        if not items or not isinstance(total, int) or len(file_ids) >= total:
-            return file_ids
-        page += 1
+        if isinstance(item.get("id"), str) and item["id"]
+    }
 
 
 def get_pending_files_by_id(
@@ -446,9 +753,9 @@ def wait_for_existing_pending_files(
 
     raise TimeoutError(
         f"Existing Open WebUI files timed out: source={source.name}. Run "
-        "python3 scripts/oikb/remove_owui_pending.py "
-        f"--knowledge-id {source.knowledge_id} first; review the dry-run before "
-        "using --delete"
+        "python3 scripts/oikb/oikb_sync.py delete --dry-run "
+        f"--knowledge-id {source.knowledge_id} first; then rerun without "
+        "--dry-run to delete"
     )
 
 
@@ -461,7 +768,7 @@ def wait_for_open_webui_registration(
     poll_interval_seconds: int,
     timeout_seconds: int,
 ) -> None:
-    """今回uploadされた全fileの処理とKnowledge link完了を待つ。
+    """KB内の全file完了と今回uploadされたfileのlink完了を待つ。
 
     Args:
         open_webui_url: Open WebUIのbase URL。
@@ -477,7 +784,7 @@ def wait_for_open_webui_registration(
 
     Raises:
         TimeoutError: 指定時間内に登録が完了しない場合。
-        ValueError: 同時uploadまたはfile数不整合の場合。
+        ValueError: file失敗、同時upload、またはfile数不整合の場合。
     """
     added = int(history.get("files_added", 0))
     modified = int(history.get("files_modified", 0))
@@ -511,11 +818,48 @@ def wait_for_open_webui_registration(
             time.sleep(poll_interval_seconds)
             continue
 
-        linked_ids = list_linked_file_ids(
+        linked_files = list_knowledge_files(
             open_webui_url,
             open_webui_api_key,
             source.knowledge_id,
         )
+        failed_files = [
+            item
+            for item in linked_files
+            if isinstance(item.get("data"), dict)
+            and item["data"].get("status") == "failed"
+        ]
+        if failed_files:
+            names = [
+                str(item.get("filename") or item.get("id")) for item in failed_files
+            ]
+            raise ValueError(
+                f"Open WebUI file processing failed: source={source.name} "
+                f"files={', '.join(names)}"
+            )
+        incomplete_files = [
+            item
+            for item in linked_files
+            if not isinstance(item.get("data"), dict)
+            or item["data"].get("status") != "completed"
+        ]
+        if incomplete_files:
+            LOGGER.info(
+                "Waiting for every Knowledge file to complete: source=%s files=%s",
+                source.name,
+                ", ".join(
+                    str(item.get("filename") or item.get("id"))
+                    for item in incomplete_files
+                ),
+            )
+            time.sleep(poll_interval_seconds)
+            continue
+
+        linked_ids = {
+            item["id"]
+            for item in linked_files
+            if isinstance(item.get("id"), str) and item["id"]
+        }
         new_linked_ids = linked_ids - previous_linked_ids
         observed_new_ids.update(new_linked_ids)
         if len(observed_new_ids) > expected_new_count:
@@ -739,80 +1083,116 @@ def build_parser() -> argparse.ArgumentParser:
         なし。
 
     Returns:
-        OIKB逐次同期script用ArgumentParser。
+        OIKB保守CLI用ArgumentParser。
     """
     parser = argparse.ArgumentParser(
-        description=(
-            "Synchronize OIKB sources sequentially through Open WebUI registration."
-        ),
+        description="OIKB同期とOpen WebUI停止ファイル削除を実行します。",
     )
-    parser.add_argument(
-        "--oikb-url",
-        default=os.environ.get("OIKB_URL", "http://localhost:32001"),
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    trigger_parser = subparsers.add_parser(
+        "trigger",
+        help="OIKB sourceをKnowledge登録完了まで1つずつ同期します。",
     )
-    parser.add_argument("--oikb-api-key", default=os.environ.get("OIKB_API_KEY"))
-    parser.add_argument(
-        "--open-webui-url",
-        default=os.environ.get("OPEN_WEBUI_URL", "http://localhost:32000"),
-    )
-    parser.add_argument(
-        "--open-webui-api-key",
-        default=os.environ.get("OPEN_WEBUI_API_KEY"),
-    )
-    parser.add_argument(
+    trigger_parser.add_argument(
         "--source",
         action="append",
         default=None,
-        help="Source name to sync; repeat this option to define the order.",
+        help="同期するsource名です。繰り返し指定すると順序を定義します。",
     )
-    parser.add_argument(
+    trigger_parser.add_argument(
         "--interval-seconds",
         type=int,
         default=int(os.environ.get("OIKB_TRIGGER_INTERVAL_SECONDS", "3600")),
+        help="--watch時の同期間隔です。",
     )
-    parser.add_argument(
+    trigger_parser.add_argument(
         "--poll-interval-seconds",
         type=int,
         default=int(os.environ.get("OIKB_TRIGGER_POLL_INTERVAL_SECONDS", "3")),
+        help="OIKBとOpen WebUIの状態確認間隔です。",
     )
-    parser.add_argument(
+    trigger_parser.add_argument(
         "--oikb-timeout-seconds",
         type=int,
         default=int(os.environ.get("OIKB_TRIGGER_SYNC_TIMEOUT_SECONDS", "21600")),
+        help="1 sourceのOIKB同期完了待ちtimeoutです。",
     )
-    parser.add_argument(
+    trigger_parser.add_argument(
         "--open-webui-timeout-seconds",
         type=int,
         default=int(os.environ.get("OPEN_WEBUI_PROCESS_TIMEOUT_SECONDS", "21600")),
+        help="1 sourceのOpen WebUI登録完了待ちtimeoutです。",
     )
-    parser.add_argument(
-        "--once",
+    trigger_mode = trigger_parser.add_mutually_exclusive_group()
+    trigger_mode.add_argument(
+        "--watch",
         action="store_true",
-        help="Run one sync cycle and exit.",
+        help="全sourceの完了後も指定間隔で同期を繰り返します。",
+    )
+    trigger_mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="変更せず、まだ同期されていないfileをlogへ記録します。",
+    )
+
+    delete_parser = subparsers.add_parser(
+        "delete",
+        help="Open WebUIで停止したKnowledge fileを削除します。",
+    )
+    delete_parser.add_argument(
+        "--knowledge-id",
+        action="append",
+        default=[],
+        help="対象Knowledge IDです。繰り返し指定できます。",
+    )
+    delete_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="削除せずpendingとfailed fileをlogへ記録します。",
     )
     return parser
 
 
-def main(argv: Sequence[str]) -> int:
-    """OIKB逐次同期のcommand line処理を実行する。
+def run_trigger_command(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    oikb_url: str,
+    oikb_api_key: str | None,
+    open_webui_url: str,
+    open_webui_api_key: str | None,
+) -> int:
+    """trigger subcommandを実行する。
 
     Args:
-        argv: プログラム名を含むcommand line引数。
+        args: trigger subcommandの解析済み引数。
+        parser: 設定errorの報告に使うroot parser。
+        oikb_url: OIKBのbase URL。
+        oikb_api_key: OIKB API key。
+        open_webui_url: Open WebUIのbase URL。
+        open_webui_api_key: Open WebUI API key。
 
     Returns:
-        正常終了時は0、設定または通信error時は1、不正な引数では2。
+        正常終了時は0。
 
     Side Effects:
-        OIKB sourceを逐次同期し、実行時間をlogへ記録する。
+        OIKB sourceを逐次同期する。`--watch`指定時は同期を繰り返す。
     """
-    started_at = time.perf_counter()
-    load_environment(DEFAULT_ENV_FILE)
-    parser = build_parser()
-    args = parser.parse_args(argv[1:])
-    if not args.oikb_api_key:
-        parser.error("--oikb-api-key or OIKB_API_KEY is required")
-    if not args.open_webui_api_key:
-        parser.error("--open-webui-api-key or OPEN_WEBUI_API_KEY is required")
+    if not oikb_api_key:
+        parser.error("OIKB_API_KEY environment variable is required")
+    env_source_order = [
+        name.strip()
+        for name in os.environ.get("OIKB_SOURCE_ORDER", "").split(",")
+        if name.strip()
+    ]
+    source_order = args.source if args.source is not None else env_source_order
+    if args.dry_run:
+        count = preview_all_syncs(oikb_url, oikb_api_key, source_order)
+        LOGGER.info("OIKB dry-run completed: unsynced=%d", count)
+        return 0
+
+    if not open_webui_api_key:
+        parser.error("OPEN_WEBUI_API_KEY environment variable is required")
     for option_name in (
         "interval_seconds",
         "poll_interval_seconds",
@@ -822,38 +1202,108 @@ def main(argv: Sequence[str]) -> int:
         if getattr(args, option_name) <= 0:
             parser.error(f"--{option_name.replace('_', '-')} must be at least 1")
 
-    env_source_order = [
-        name.strip()
-        for name in os.environ.get("OIKB_SOURCE_ORDER", "").split(",")
-        if name.strip()
-    ]
-    source_order = args.source if args.source is not None else env_source_order
-
-    try:
-        common_args = (
-            args.oikb_url,
-            args.oikb_api_key,
-            args.open_webui_url,
-            args.open_webui_api_key,
-            source_order,
+    common_args = (
+        oikb_url,
+        oikb_api_key,
+        open_webui_url,
+        open_webui_api_key,
+        source_order,
+    )
+    if args.watch:
+        run_scheduler(
+            *common_args,
+            args.interval_seconds,
+            args.poll_interval_seconds,
+            args.oikb_timeout_seconds,
+            args.open_webui_timeout_seconds,
         )
-        if args.once:
-            count = trigger_all_syncs(
-                *common_args,
-                args.poll_interval_seconds,
-                args.oikb_timeout_seconds,
-                args.open_webui_timeout_seconds,
-            )
-            LOGGER.info("Sequential sync completed: sources=%d", count)
-        else:
-            run_scheduler(
-                *common_args,
-                args.interval_seconds,
-                args.poll_interval_seconds,
-                args.oikb_timeout_seconds,
-                args.open_webui_timeout_seconds,
-            )
         return 0
+
+    count = trigger_all_syncs(
+        *common_args,
+        args.poll_interval_seconds,
+        args.oikb_timeout_seconds,
+        args.open_webui_timeout_seconds,
+    )
+    LOGGER.info("Sequential sync completed: sources=%d", count)
+    return 0
+
+
+def run_delete_command(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    open_webui_url: str,
+    open_webui_api_key: str | None,
+) -> int:
+    """delete subcommandを実行する。
+
+    Args:
+        args: delete subcommandの解析済み引数。
+        parser: 設定errorの報告に使うroot parser。
+        open_webui_url: Open WebUIのbase URL。
+        open_webui_api_key: Open WebUI API key。
+
+    Returns:
+        正常終了時は0。
+
+    Side Effects:
+        `--dry-run`時は削除候補をlogへ記録する。それ以外は停止fileをOpen
+        WebUIから削除する。
+    """
+    if not open_webui_api_key:
+        parser.error("OPEN_WEBUI_API_KEY environment variable is required")
+    if not args.dry_run:
+        LOGGER.warning("Delete mode enabled: stuck files cannot be restored")
+    count = cleanup_stuck_files(
+        open_webui_url,
+        open_webui_api_key,
+        args.knowledge_id,
+        args.dry_run,
+    )
+    mode = "dry-run" if args.dry_run else "delete"
+    LOGGER.info("Delete command completed: mode=%s files=%d", mode, count)
+    return 0
+
+
+def main(argv: Sequence[str]) -> int:
+    """OIKB保守CLIのcommand line処理を実行する。
+
+    Args:
+        argv: プログラム名を含むcommand line引数。
+
+    Returns:
+        正常終了時は0、設定または通信error時は1、不正な引数では2。
+
+    Side Effects:
+        環境変数を読み込み、選択された処理と実行時間をlogへ記録する。
+    """
+    started_at = time.perf_counter()
+    try:
+        load_environment(DEFAULT_ENV_FILE)
+        parser = build_parser()
+        args = parser.parse_args(argv[1:])
+        oikb_url = os.environ.get("OIKB_API_URL", "http://localhost:32001")
+        oikb_api_key = os.environ.get("OIKB_API_KEY")
+        open_webui_url = os.environ.get(
+            "OPEN_WEBUI_API_URL",
+            "http://localhost:32000",
+        )
+        open_webui_api_key = os.environ.get("OPEN_WEBUI_API_KEY")
+        if args.command == "trigger":
+            return run_trigger_command(
+                args,
+                parser,
+                oikb_url,
+                oikb_api_key,
+                open_webui_url,
+                open_webui_api_key,
+            )
+        return run_delete_command(
+            args,
+            parser,
+            open_webui_url,
+            open_webui_api_key,
+        )
     except KeyboardInterrupt:
         LOGGER.info("Stop requested")
         return 0
@@ -865,7 +1315,7 @@ def main(argv: Sequence[str]) -> int:
         TimeoutError,
         json.JSONDecodeError,
     ) as error:
-        LOGGER.error("Sequential sync failed: %s", error)
+        LOGGER.error("OIKB command failed: %s", error)
         return 1
     finally:
         LOGGER.info("Elapsed time: %.3f seconds", time.perf_counter() - started_at)

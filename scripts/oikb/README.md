@@ -1,119 +1,130 @@
-# OIKB保守スクリプト
+# OIKB保守CLI
 
-このdirectoryには、Open WebUI Knowledge Baseのpending file確認、停止file削除、OIKB同期triggerを行うscriptを配置する。すべてrepository rootから実行する。
+`oikb_sync.py`は、OIKB sourceの逐次同期とOpen WebUI Knowledge Base（KB）の停止file削除を行う。repository rootから実行する。
 
-## 共通設定
+## 環境変数
 
-各scriptはrepository rootの`.env`を起動時に読み込む。processへ設定済みの環境変数とcommand line optionは`.env`より優先される。
+CLIはrepository rootの`.env`を起動時に読み込む。processへ設定済みの環境変数は`.env`より優先される。API URLとcredentialはcommand line引数では受け取らず、次の環境変数から取得する。
 
-log messageは英語で出力する。terminal実行時はlog level名を色付きで表示し、`NO_COLOR`環境変数が設定されている場合はANSI colorを使用しない。
+```dotenv
+OPEN_WEBUI_API_URL=http://localhost:32000
+OPEN_WEBUI_API_KEY=<Open WebUI API key>
+OIKB_API_URL=http://localhost:32001
+OIKB_API_KEY=<OIKB API key>
+OIKB_SOURCE_ORDER=nextcloud-documents,rustfs-documents
+```
 
-## pending file一覧の確認
+`OPEN_WEBUI_API_URL`と`OIKB_API_URL`を省略した場合は、上記のlocalhost URLを使用する。
 
-`check_owui_pending.py`は、現在`pending`または`processing`のfileを一覧表示する。既定では更新から1時間以上経過したfileを`stuck`、それ以外を`pending`として分類する。`--stuck-after-seconds`で境界時間を変更でき、`--knowledge-id`を繰り返すと対象Knowledge Baseを限定できる。
+## helpの表示
 
 ```bash
-# 全Knowledge Baseのpending fileをTSV形式で表示する。
-python3 scripts/oikb/check_owui_pending.py
+# 利用可能なsubcommandを表示する。
+python3 scripts/oikb/oikb_sync.py --help
+
+# triggerのoptionを表示する。
+python3 scripts/oikb/oikb_sync.py trigger --help
+
+# deleteのoptionを表示する。
+python3 scripts/oikb/oikb_sync.py delete --help
 ```
 
 期待結果:
 
-- `state`、`status`、経過秒数、Knowledge ID、file ID、file名が標準出力へ表示される。
-- Open WebUIのfile、Knowledge関連、vectorは変更されない。
+- `trigger`と`delete`がsubcommandとして表示される。
+- 両subcommandに`--dry-run`が表示される。
 
 失敗条件:
 
-- API keyが未設定でscriptが終了code 2を返す。
-- Open WebUIまたはOIKBへ接続できず、scriptが終了code 1を返す。
+- Python dependencyを読み込めず、helpを表示する前に終了する。
 
-## 処理停止fileの削除
+## 未同期fileの確認
 
-`remove_owui_pending.py`は、Open WebUIで`pending`または`processing`のまま一定時間更新されていないfileを検出する。既定の判定時間は1時間で、`--min-age-seconds`で変更できる。Knowledge IDは`--knowledge-id`で明示でき、未指定時はOIKBのhealthと同期履歴から取得する。
-
-既定ではdry-runになり、fileを削除しない。
+`trigger --dry-run`は、`OIKB_SOURCE_ORDER`の各sourceについてOIKBの差分計算だけを実行する。追加または更新が必要なfileを`Unsynced OIKB file`としてlogへ記録し、Open WebUIは変更しない。
 
 ```bash
-# 1時間以上更新されていない処理停止fileを表示する。
-python3 scripts/oikb/remove_owui_pending.py
+# 全sourceの未同期fileを変更せずに確認する。
+python3 scripts/oikb/oikb_sync.py trigger --dry-run
 ```
 
 期待結果:
 
-- 処理停止fileのKnowledge ID、file ID、statusがwarning logへ出力される。
-- Open WebUIのfile、Knowledge関連、vectorは変更されない。
+- 未同期fileごとにsource名、`added`または`modified`、source内pathが表示される。
+- OIKB healthのsource状態が`idle`へ戻る。
+- Open WebUIのfileとKBは変更されない。
 
 失敗条件:
 
-- API keyが未設定でscriptが終了code 2を返す。
-- Open WebUIまたはOIKBへ接続できず、scriptが終了code 1を返す。
+- OIKB2 imageが古く、dry-run responseにfile詳細がない。
+- OIKBがsource manifestまたはOpen WebUIとの差分を取得できない。
 
-dry-run結果を確認した後、`--delete`を指定すると対象fileを削除する。
+## KBの逐次同期
 
-```bash
-# dry-runで確認した処理停止fileと関連vectorを削除する。
-python3 scripts/oikb/remove_owui_pending.py --delete
-```
+`trigger`は、`OIKB_SOURCE_ORDER`または繰り返し指定した`--source`の順でKBを1つずつ処理する。1 KBについて次をすべて確認してから、次のKBをtriggerする。
 
-期待結果:
-
-- 対象fileごとに削除完了logが出力される。
-- Open WebUI APIがfile本体、Knowledge関連、関連vectorを削除する。
-
-失敗条件:
-
-- 削除権限がなくOpen WebUI APIがerrorを返す。
-- 削除対象のstorageまたはvector cleanupに失敗する。
-
-削除したfileは復元できない。rollbackが必要な場合は、元sourceを保持した状態でOIKB同期を再実行する。
-
-## OIKB同期の定期trigger
-
-`trigger_oikb_sync.py`は、`.env`の`OIKB_SOURCE_ORDER`または繰り返し指定した`--source`の順でsourceを1つずつ同期する。各sourceで次をすべて確認してから、次のsourceをtriggerする。
-
-1. OIKBの今回の同期が`success`で終了する。
+1. OIKBの同期が`success`で終了する。
 2. OIKBのhistoryに今回の同期結果が保存される。
-3. 今回のOpen WebUI fileがすべて`completed`になる。
-4. fileがKnowledge Baseへlinkされ、pending fileが0件になる。
-
-OIKB内蔵schedulerが各sourceを並列起動しないよう、custom imageで内蔵schedulerを無効化している。OIKBのfile uploadはOpen WebUIのbackground処理を無効にし、1 fileのDocling解析、vector登録、Knowledge Baseへのlinkが完了してから次のfileを送信する。
+3. KB内の全fileが`completed`になる。
+4. 今回のfileがKBへlinkされ、pending fileが0件になる。
 
 ```bash
-# 外部scheduler専用のOIKB imageをbuildし、OIKBだけ再作成する。
-sudo docker compose --env-file .env --profile owui up -d --build --no-deps oikb
+# OIKB_SOURCE_ORDERの全KBを1回だけ逐次同期する。
+python3 scripts/oikb/oikb_sync.py trigger
 ```
 
 期待結果:
 
-- OIKBの`GET /health`が各sourceに`kb_id`と`idle`状態を返す。
-- OIKBを再起動しても、scriptがtriggerするまでsource同期は始まらない。
+- 1 KBの全fileが`completed`になるまで次のKBはtriggerされない。
+- OIKB Docker logに`OIKB2 processing file`と`OIKB2 registered file`がfileごとに同じ順で表示される。
+- 全KBの完了後、CLIが終了code 0で終了する。
 
 失敗条件:
 
-- OIKBのhealth responseに`kb_id`がなく、scriptがimageの再buildを求めて終了する。
+- API key、source名、またはKnowledge IDが不正である。
+- OIKB同期、Open WebUI file処理、KBへのlink、またはpending解消が失敗する。
+- 対象KBのfileが`failed`になり、同じKBの次fileと後続KBを開始せず終了する。
 
-実行間隔は`OIKB_TRIGGER_INTERVAL_SECONDS`または`--interval-seconds`で変更できる。
+継続実行が必要な場合だけ`--watch`を使用する。
 
 ```bash
-# OIKB_SOURCE_ORDERの順に同期し、全source完了後に1時間待つ。
-python3 scripts/oikb/trigger_oikb_sync.py
+# 全KBの完了後もOIKB_TRIGGER_INTERVAL_SECONDS間隔で同期を繰り返す。
+python3 scripts/oikb/oikb_sync.py trigger --watch
+```
+
+## 停止fileの確認と削除
+
+`delete`は全KBのfileを調査し、statusが`pending`または`failed`のfileだけを対象にする。`processing`と`completed`は削除しない。最初に`--dry-run`で対象を確認する。
+
+```bash
+# 全KBの削除候補を変更せずにlogへ記録する。
+python3 scripts/oikb/oikb_sync.py delete --dry-run
 ```
 
 期待結果:
 
-- sourceごとにOIKB trigger、Open WebUI登録完了のlogが指定順で出力される。
-- OIKB同期待機中は、現在処理中のfile名が最大60秒間隔でlogへ出力される。
-- 全sourceの完了後から3600秒後に次の周期が始まる。
+- 対象fileごとにKnowledge ID、file ID、status、file名が表示される。
+- `processing`と`completed`は表示されず、Open WebUIは変更されない。
 
 失敗条件:
 
-- OIKB API keyまたはOpen WebUI API keyが未設定でscriptが終了code 2を返す。
-- OIKB同期、Open WebUI file処理、link、またはpending解消が失敗すると、後続sourceをtriggerせず次周期まで待つ。
-- 同期前から対象Knowledge Baseにpending fileがある場合は、前回処理と混同しないよう失敗する。
+- Open WebUIまたはOIKBへ接続できない。
+- API keyの権限不足により全fileまたはKnowledge IDを取得できない。
 
-動作確認では`--once`を指定し、1周期だけ実行できる。
+確認した対象を削除する。
 
 ```bash
-# OIKB_SOURCE_ORDERの全sourceを1回だけ逐次同期する。
-python3 scripts/oikb/trigger_oikb_sync.py --once
+# 全KBのpendingとfailed fileを削除する。
+python3 scripts/oikb/oikb_sync.py delete
 ```
+
+期待結果:
+
+- dry-runと同じ選択条件のfileだけが削除される。
+- file本体、Knowledge関連、関連vectorの削除完了がlogへ表示される。
+
+失敗条件:
+
+- dry-run後に対象のstatusが変化した。
+- Open WebUIのfileまたはvector削除APIがerrorを返した。
+
+削除したfileは復元できない。復旧が必要な場合は元sourceを保持した状態で`trigger`を再実行する。
