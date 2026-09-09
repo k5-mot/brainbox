@@ -204,7 +204,7 @@ def _patch_source(source: str) -> str:
         def upload_file_with_state(
             file_content: bytes,
             filename: str,
-            upload_kb_id: str,
+            kb_id: str,
             file_hash: str,
             directory_id: str | None = None,
         ) -> dict[str, Any]:
@@ -213,7 +213,7 @@ def _patch_source(source: str) -> str:
             Args:
                 file_content: uploadするfile内容。
                 filename: Open WebUIへ登録するfile名。
-                upload_kb_id: 登録先Knowledge Base ID。
+                kb_id: 登録先Knowledge Base ID。
                 file_hash: 差分判定に使うfile hash。
                 directory_id: 登録先directory ID。rootの場合はNone。
 
@@ -229,7 +229,7 @@ def _patch_source(source: str) -> str:
                 return original_upload_file(
                     file_content,
                     filename,
-                    upload_kb_id,
+                    kb_id,
                     file_hash,
                     directory_id,
                 )

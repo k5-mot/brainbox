@@ -885,6 +885,22 @@ class Client:
             patch_source.index("finally:"),
         )
 
+    def test_oikb2_upload_state_wrapper_preserves_kb_id_keyword(self) -> None:
+        """upload wrapperがupstreamのkb_id keyword契約を維持する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        patch_source = (
+            REPO_ROOT / "20-owui/oikb2/patch-daemon-external-scheduler.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("            kb_id: str,", patch_source)
+        self.assertNotIn("upload_kb_id", patch_source)
+
 
 class CliHelpTest(unittest.TestCase):
     """統合CLIのhelpとsubcommandを検証する。"""
