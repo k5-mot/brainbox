@@ -2,20 +2,36 @@
 
 ## Purpose
 
-Docker Composeの`sage-wiki` profileが提供する初期化、知識コンパイル、検索、Web UI、APIおよびMCPの公開境界を定めます。
+Docker Composeの`sage-wiki` profileが提供する初期化、CouchDB ingest、知識コンパイル、検索、Web UI、APIおよびMCPの公開境界を定めます。
 
 ## Requirements
 
 ### Requirement: sage-wiki profileの提供範囲
 
-`sage-wiki` profileは`sage-wiki-init`と`sage-wiki`を対象とし、初期化serviceの正常終了後に長期稼働serviceを起動するものとする（MUST）。
+`sage-wiki` profileは`couchdb`、`sage-wiki-init`、`sage-wiki-couchdb-init`、`sage-wiki-ingester`および`sage-wiki`を対象とし、初期化と初回ingestの正常終了後に長期稼働serviceを起動するものとする（MUST）。
 
 #### Scenario: profileを選択する
 
 - **WHEN** 運用者が`sage-wiki` profileを選択してCompose設定を解決する
-- **THEN** `sage-wiki-init`と`sage-wiki`がprofileの対象serviceとして含まれる
-- **THEN** `sage-wiki`は初期化の正常終了を待って起動する
-- **THEN** `sage-wiki`はhealthcheckによって正常性を判定できる
+- **THEN** CouchDB、初期化、初回ingest、継続ingestおよび内蔵compilerを持つ公開serviceがprofileの対象として含まれる
+- **THEN** 長期稼働serviceは初期化と初回ingestの正常終了を待って起動する
+- **THEN** 各長期稼働serviceはhealthcheckによって正常性を判定できる
+
+### Requirement: CouchDB LiveSync dataのingest
+
+`sage-wiki` profileは、CouchDB `obsidian` databaseのLiveSync Markdownを初回起動時と6時間ごとに`sources/`へsnapshot同期するものとする（MUST）。
+
+#### Scenario: CouchDBから初回sourceを生成する
+
+- **WHEN** CouchDBがhealthyで有効なcredentialを使用できる
+- **THEN** 非削除Markdown親documentの本文が`children`順に復元される
+- **THEN** 対象documentが`sources/`のMarkdown fileとして保存される
+- **THEN** 初回ingestの正常終了後にSage Wikiの内蔵compilerが起動する
+
+#### Scenario: CouchDBのsourceが更新される
+
+- **WHEN** 6時間ごとのingestがsource差分を反映する
+- **THEN** Sage Wikiの内蔵compilerは`sources/`の変更を検知して生成Wikiとindexを更新する
 
 ### Requirement: sage-wiki profileの公開境界
 

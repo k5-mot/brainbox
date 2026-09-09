@@ -18,6 +18,69 @@ services:
     mem_limit: 512m
     pids_limit: 128
 
+  sage-wiki-couchdb-init:
+    image: inferlab/llmwiki-ingester:v1.1.0
+    build:
+      context: ../41-llmwiki/ingester
+      dockerfile: Dockerfile
+    container_name: ${STACK_NAME}-sage-wiki-couchdb-init
+    restart: "no"
+    profiles:
+      - sage-wiki
+    command:
+      - node
+      - dist/main.js
+      - ingest
+      - obsidian-couchdb
+    environment:
+      CONFIG_PATH: /app/config.yaml
+      COUCHDB_USERNAME: ${OBSIDIAN_COUCHDB_USER:-obs_couchdb_user}
+      COUCHDB_PASSWORD: ${OBSIDIAN_COUCHDB_PASSWORD:-obs_couchdb_password}
+    volumes:
+      - ./ingester-config.yaml:/app/config.yaml:ro
+      - sage-wiki-project:/data/sage-wiki
+    networks:
+      - internal-nw
+    depends_on:
+      sage-wiki-init:
+        condition: service_completed_successfully
+      couchdb:
+        condition: service_healthy
+    mem_limit: 2g
+    pids_limit: 256
+
+  sage-wiki-ingester:
+    image: inferlab/llmwiki-ingester:v1.1.0
+    build:
+      context: ../41-llmwiki/ingester
+      dockerfile: Dockerfile
+    container_name: ${STACK_NAME}-sage-wiki-ingester
+    restart: unless-stopped
+    profiles:
+      - sage-wiki
+    environment:
+      CONFIG_PATH: /app/config.yaml
+      COUCHDB_USERNAME: ${OBSIDIAN_COUCHDB_USER:-obs_couchdb_user}
+      COUCHDB_PASSWORD: ${OBSIDIAN_COUCHDB_PASSWORD:-obs_couchdb_password}
+    volumes:
+      - ./ingester-config.yaml:/app/config.yaml:ro
+      - sage-wiki-project:/data/sage-wiki
+    networks:
+      - internal-nw
+    depends_on:
+      sage-wiki-couchdb-init:
+        condition: service_completed_successfully
+    mem_limit: 2g
+    pids_limit: 256
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -r /proc/1/cmdline && grep -q 'dist/main.js' /proc/1/cmdline
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   sage-wiki:
     image: ghcr.io/xoai/sage-wiki:v0.2.10
     container_name: ${STACK_NAME}-sage-wiki
@@ -44,8 +107,10 @@ services:
     networks:
       - internal-nw
     depends_on:
-      sage-wiki-init:
+      sage-wiki-couchdb-init:
         condition: service_completed_successfully
+      sage-wiki-ingester:
+        condition: service_healthy
     mem_limit: 2g
     pids_limit: 512
     healthcheck:

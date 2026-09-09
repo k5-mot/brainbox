@@ -1,6 +1,6 @@
 # Sage Wiki
 
-Sage Wiki `v0.2.10`を、LLMによる知識コンパイル、検索、知識graph、Web UI、REST APIおよびMCP serverに使用する。公式container imageを使用し、初回だけprojectを初期化する`sage-wiki-init`と、Web UIおよびcompile workerを提供する`sage-wiki`で構成する。両serviceは`sage-wiki-project` named volumeを共有する。
+Sage Wiki `v0.2.10`を、LLMによる知識コンパイル、検索、知識graph、Web UI、REST APIおよびMCP serverに使用する。`sage-wiki-init`がprojectを初期化し、`sage-wiki-couchdb-init`がCouchDBの初回snapshotをMarkdownへ変換する。以後は`sage-wiki-ingester`が6時間ごとに同期し、`sage-wiki`の内蔵workerが変更を検知してcompileする。`sage-wiki`は生成結果のWeb UI、APIおよびMCPも公開する。すべてのserviceは`sage-wiki-project` named volumeを共有する。
 
 LLM処理は既存のLiteLLMへOpenAI互換APIで接続する。生成modelには`openai/gpt-oss:20b`、embedding modelには`Qwen/Qwen3-Embedding:0.6B`を使用する。credentialの値はrepositoryへ保存せず、`LITELLM_MASTER_KEY`環境変数から取得する。
 
@@ -24,20 +24,41 @@ openssl rand -hex 32
 
 - tokenが空、または`PUBLIC_HOST`が閲覧時のhost名やIPと一致しない場合は起動またはHTTP要求に失敗する。
 
+## CouchDB ingest
+
+`40-obsidian`のCouchDB `obsidian` databaseを取り込み元とする。LiveSyncの非削除Markdown親documentを対象に、分割された本文を`children`順に復元し、`sources/`へMarkdown snapshotを生成する。hidden path、Markdown以外、空本文および`ix:`で始まるpathは取り込まない。
+
+初回起動時は`sage-wiki-couchdb-init`の完了後に常駐serviceが起動する。手動で即時再同期する場合は次を実行する。
+
+```bash
+# CouchDBから最新snapshotを再取得する。
+docker compose --profile sage-wiki run --rm sage-wiki-couchdb-init
+```
+
+期待結果:
+
+- CouchDB由来のMarkdownが`sage-wiki-project` volumeの`sources/`へ保存される。
+- `sage-wiki`の内蔵workerが変更を検知し、生成Wikiとindexを更新する。
+
+失敗基準:
+
+- CouchDBへの接続、credential、LiveSync documentの復元またはvolumeへの書込に失敗する。
+
 ## 起動
 
 ```bash
-# 初期化serviceを完了させ、Sage Wikiを起動する。
-docker compose --profile sage-wiki up -d sage-wiki
+# imageをbuildし、CouchDB ingestを含むSage Wiki一式を起動する。
+docker compose --profile sage-wiki up -d --build sage-wiki
 
-# 初期化結果と常駐serviceの状態を確認する。
-docker compose --profile sage-wiki ps -a sage-wiki-init sage-wiki
+# 初期化、ingestおよびSage Wikiの状態を確認する。
+docker compose --profile sage-wiki ps -a sage-wiki-init sage-wiki-couchdb-init sage-wiki-ingester sage-wiki
 ```
 
 期待結果:
 
 - `sage-wiki-init`が終了code 0で完了する。
-- `sage-wiki`がhealthyになる。
+- `sage-wiki-couchdb-init`が終了code 0で完了する。
+- 2つの常駐serviceがhealthyになる。
 - `http://${PUBLIC_HOST}:34200/?token=${SAGE_WIKI_TOKEN}`でWeb UIを表示できる。
 
 失敗基準:
@@ -47,21 +68,18 @@ docker compose --profile sage-wiki ps -a sage-wiki-init sage-wiki
 ## Sourceの追加とcompile
 
 ```bash
-# Markdown sourceを実行中containerのraw directoryへ追加する。
-docker compose cp ./example.md sage-wiki:/wiki/raw/example.md
-
-# 追加したsourceを明示的にcompileする。
-docker compose exec sage-wiki sage-wiki compile
+# Markdown sourceを共有volumeのsources directoryへ追加する。
+docker compose cp ./example.md sage-wiki:/wiki/sources/example.md
 
 # Wikiの状態を確認する。
 docker compose exec sage-wiki sage-wiki status
 ```
 
-常駐するcompile workerはWeb UIまたはAPIから投入したcompile jobを処理する。手動compileは即時反映を確認するときに使用する。
+内蔵compile workerは`sources/`の変更を監視して自動的に処理する。
 
 期待結果:
 
-- sourceが`raw/`へ保存される。
+- sourceが`sources/`へ保存される。
 - compile後に`wiki/`と`.sage/wiki.db`が更新される。
 - Web UIから記事、検索結果および知識graphを表示できる。
 
@@ -99,8 +117,8 @@ Sage WikiのMCPは常駐Web UIのSSE endpoint、またはcontainer内で起動�
 ## Rollback
 
 ```bash
-# 永続dataを保持したままSage Wikiを停止する。
-docker compose --profile sage-wiki stop sage-wiki
+# 永続dataを保持したままSage Wikiの常駐serviceを停止する。
+docker compose --profile sage-wiki stop sage-wiki sage-wiki-ingester
 ```
 
 停止後も`sage-wiki-project` volume内のsource、生成Wiki、indexおよび監査eventは保持される。

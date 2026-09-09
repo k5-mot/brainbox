@@ -4,7 +4,7 @@ description: InferLab Sage Wiki
 language: Japanese
 
 sources:
-  - path: raw
+  - path: sources
     watch: true
 output: wiki
 
@@ -31,7 +31,7 @@ embed:
   base_url: http://litellm:4000/v1
 
 compiler:
-  max_parallel: 4
+  max_parallel: 2
   debounce_seconds: 2
   summary_max_tokens: 4000
   article_max_tokens: 4000
@@ -39,10 +39,14 @@ compiler:
   auto_lint: true
   timezone: Asia/Tokyo
 
+limits:
+  provider_timeout: 1800s
+
 search:
   hybrid_weight_bm25: 0.7
   hybrid_weight_vector: 0.3
   default_limit: 10
+  chunk_size: 200
 
 serve:
   transport: stdio
