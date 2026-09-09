@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        CLOUDFLARE_OS_REF: ${CLOUDFLARE_OS_REF:-df04e239ed85376643c586a7329d3b8604df489e}
-    image: localhost/inferlab/cloudflare-os:${CLOUDFLARE_OS_REF:-df04e239ed85376643c586a7329d3b8604df489e}
+        CLOUDFLARE_OS_REF: df04e239ed85376643c586a7329d3b8604df489e
+    image: ghcr.io/cloudflare/cloudflare-os:df04e239ed85376643c586a7329d3b8604df489e-patch2
     container_name: ${STACK_NAME}-cloudflare-os
     restart: unless-stopped
     profiles:

@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
       args:
         OCTOS_VERSION: v2.0.2
-    image: localhost/inferlab/octos:v2.0.2
+    image: ghcr.io/octos/octos:v2.0.2
     container_name: ${STACK_NAME}-octos
     restart: unless-stopped
     profiles:
