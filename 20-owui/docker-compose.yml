@@ -217,6 +217,7 @@ services:
       ### For Qdrant (Vector DB)
       VECTOR_DB: qdrant
       QDRANT_API_KEY: ${QDRANT_API_KEY:-sk-qdrant-api-key}
+      QDRANT_COLLECTION_PREFIX: ${QDRANT_COLLECTION_PREFIX:-open-webui-qwen3-1024}
       QDRANT_URI: http://qdrant:6333
       ### For SearXNG (Web Search)
       ENABLE_WEB_SEARCH: "true"
