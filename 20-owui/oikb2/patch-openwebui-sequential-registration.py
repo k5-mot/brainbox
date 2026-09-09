@@ -49,6 +49,7 @@ def patch_source(source: str) -> str:
 from typing import Any
 """
     new_imports = """import json
+import logging
 import time
 from typing import Any
 """
@@ -68,6 +69,11 @@ from typing import Any
         if directory_id:
             metadata["directory_id"] = directory_id
 
+        logging.getLogger(__name__).info(
+            "OIKB2 processing file: knowledge_id=%s file=%s",
+            kb_id,
+            filename,
+        )
         resp = self._http.post(
             "/files/",
             files={"file": (filename, file_content)},
@@ -163,6 +169,12 @@ from typing import Any
                 page += 1
 
             if status == "completed" and linked:
+                logging.getLogger(__name__).info(
+                    "OIKB2 registered file: knowledge_id=%s file=%s file_id=%s",
+                    kb_id,
+                    filename,
+                    file_id,
+                )
                 return uploaded_file
             if time.monotonic() >= deadline:
                 raise TimeoutError(

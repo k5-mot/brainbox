@@ -605,11 +605,20 @@ from typing import Any
 
         patched = patch_module.patch_source(source)
 
+        self.assertIn("import logging", patched)
         self.assertIn('params={"process_in_background": "false"}', patched)
         self.assertIn('/process/status', patched)
         self.assertIn('f"/knowledge/{kb_id}/files"', patched)
         self.assertLess(
+            patched.index("OIKB2 processing file"),
+            patched.index('self._http.post('),
+        )
+        self.assertLess(
             patched.index('status == "completed" and linked'),
+            patched.index("OIKB2 registered file"),
+        )
+        self.assertLess(
+            patched.index("OIKB2 registered file"),
             patched.index("return uploaded_file"),
         )
         containerfile = (REPO_ROOT / "20-owui/oikb2/Containerfile").read_text(

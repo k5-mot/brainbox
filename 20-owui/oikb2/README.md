@@ -55,6 +55,18 @@ sudo docker compose --env-file .env \
 
 ## 逐次同期の確認
 
+別terminalでOIKB2のlogを追跡する。
+
+```bash
+# 処理開始fileとKnowledge登録完了fileをリアルタイム表示する。
+sudo docker compose --env-file .env \
+  -f 20-owui/docker-compose.yml \
+  -f 20-owui/oikb2/docker-compose.override.yml \
+  --profile owui logs -f oikb
+```
+
+処理中は`OIKB2 processing file`、登録確認後は`OIKB2 registered file`としてKnowledge Base ID、file名、file IDを出力する。開始logの後に登録完了logがまだないfileが、現在処理中のfileである。
+
 ```bash
 # 設定順に1周期だけ同期する。
 python3 scripts/oikb/trigger_oikb_sync.py --once
@@ -63,6 +75,7 @@ python3 scripts/oikb/trigger_oikb_sync.py --once
 期待結果:
 
 - 同時に処理中となるfileは1件だけになる。
+- OIKB2のDocker logへ処理中のKnowledge Base IDとfile名が表示される。
 - fileごとに`completed`とKnowledge Baseへのlinkを確認してから次のfileへ進む。
 - 現在のKnowledge Baseの最後のfileを確認してから、次のKnowledge Baseを開始する。
 
