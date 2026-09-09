@@ -1,60 +1,30 @@
 version: 1
 
 project:
-  root: /data/sage-wiki
+  root: /wiki
 
-provider:
-  kind: openai
-  model: openai/gpt-oss:20b
-  base_url: http://litellm:4000/v1
-  credential_env: LITELLM_MASTER_KEY
-  embedding:
-    kind: openai
-    model: Qwen/Qwen3-Embedding:0.6B
-    base_url: http://litellm:4000/v1
-    credential_env: LITELLM_MASTER_KEY
-    batch_size: 2
-    strict: false
+scheduler:
+  timezone: Asia/Tokyo
 
-output:
-  language: Japanese
+defaults:
+  ingest:
+    enabled: false
+    run_on_start: false
+    schedule: "0 * * * *"
+    timeout_seconds: 600
 
-runtime: {}
-
-ingester:
-  scheduler:
-    timezone: Asia/Tokyo
-  defaults:
+sources:
+  - id: obsidian-couchdb
+    adapter: couchdb
+    url: http://couchdb:5984
+    database: obsidian
+    username_env: COUCHDB_USERNAME
+    password_env: COUCHDB_PASSWORD
+    title_strategy: hierarchy
+    exclude_path_prefixes:
+      - "ix:"
+    max_documents: 1000
     ingest:
-      enabled: false
-      schedule: "0 * * * *"
-      timeout_seconds: 600
-  sources:
-    - id: obsidian-couchdb
-      adapter: couchdb
-      url: http://couchdb:5984
-      database: obsidian
-      username_env: COUCHDB_USERNAME
-      password_env: COUCHDB_PASSWORD
-      title_strategy: hierarchy
-      exclude_path_prefixes:
-        - "ix:"
-      max_documents: 1000
-      ingest:
-        enabled: true
-        schedule: "0 */6 * * *"
-  compile:
-    enabled: false
-    schedule: "*/30 * * * *"
-    on_ingest: false
-    concurrency: 1
-    review: false
-    timeout_seconds: 3600
-  quality:
-    lint:
-      enabled: false
-    eval:
-      enabled: false
-      suite: fast
-  validation:
-    enabled: false
+      enabled: true
+      run_on_start: true
+      schedule: "0 */6 * * *"

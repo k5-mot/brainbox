@@ -126,8 +126,6 @@
 | `obsidian`, `llmwiki`, `sage-wiki`, `openkb` | `couchdb` | `34000` | `40-obsidian/docker-compose.yml` |
 | `llmwiki` | `llmwiki` | `34100` | `41-llmwiki/docker-compose.yml` |
 | `llmwiki` | `llmwiki-ingester` | - | `41-llmwiki/docker-compose.yml` |
-| `sage-wiki` | `sage-wiki-init` | - | `42-sage-wiki/docker-compose.yml` |
-| `sage-wiki` | `sage-wiki-couchdb-init` | - | `42-sage-wiki/docker-compose.yml` |
 | `sage-wiki` | `sage-wiki-ingester` | - | `42-sage-wiki/docker-compose.yml` |
 | `sage-wiki` | `sage-wiki` | `34200` | `42-sage-wiki/docker-compose.yml` |
 | `o11y` | `grafana` | `35000` | `50-o11y/docker-compose.yml` |
