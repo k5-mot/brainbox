@@ -98,6 +98,40 @@ class CleanupScriptTest(unittest.TestCase):
 
         self.assertEqual([item["id"] for item in result], ["pending", "failed"])
 
+    def test_empty_knowledge_ids_selects_files_from_all_kbs(self) -> None:
+        """Knowledge ID未指定時に全KBの停止fileを選択する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        files = [
+            {
+                "id": "kb-a-pending",
+                "data": {"status": "pending"},
+                "meta": {"data": {"knowledge_id": "kb-a"}},
+            },
+            {
+                "id": "kb-b-failed",
+                "data": {"status": "failed"},
+                "meta": {"data": {"knowledge_id": "kb-b"}},
+            },
+            {
+                "id": "kb-c-completed",
+                "data": {"status": "completed"},
+                "meta": {"data": {"knowledge_id": "kb-c"}},
+            },
+        ]
+
+        result = CLEANUP.select_delete_candidates(files, [])
+
+        self.assertEqual(
+            [item["id"] for item in result],
+            ["kb-a-pending", "kb-b-failed"],
+        )
+
     def test_cleanup_dry_run_does_not_delete(self) -> None:
         """dry-runでは停止ファイルを検出しても削除APIを呼ばない。"""
         files = [
@@ -224,6 +258,44 @@ class TriggerScriptTest(unittest.TestCase):
                     "nextcloud:/oikb",
                     "nextcloud-documents",
                     "kb-nextcloud",
+                ),
+            ],
+        )
+
+    def test_discover_sources_uses_all_sources_when_order_is_empty(self) -> None:
+        """source順未指定時にOIKBの全sourceを設定順で解決する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        states = {
+            "nextcloud:/oikb": {
+                "name": "nextcloud-documents",
+                "kb_id": "kb-nextcloud",
+            },
+            "s3://bucket": {
+                "name": "rustfs-documents",
+                "kb_id": "kb-rustfs",
+            },
+        }
+        with patch.object(TRIGGER, "get_source_states", return_value=states):
+            result = TRIGGER.discover_sources("http://oikb", [])
+
+        self.assertEqual(
+            result,
+            [
+                TRIGGER.SourceConfig(
+                    "nextcloud:/oikb",
+                    "nextcloud-documents",
+                    "kb-nextcloud",
+                ),
+                TRIGGER.SourceConfig(
+                    "s3://bucket",
+                    "rustfs-documents",
+                    "kb-rustfs",
                 ),
             ],
         )
@@ -608,6 +680,41 @@ class TriggerScriptTest(unittest.TestCase):
             "http://webui.example",
             "webui-secret",
             ["rustfs-documents", "nextcloud-documents"],
+            3,
+            21600,
+            21600,
+        )
+
+    def test_main_without_source_order_triggers_all_sources(self) -> None:
+        """OIKB_SOURCE_ORDER未設定時に全source検出を指示する。
+
+        Args:
+            なし。
+
+        Returns:
+            なし。
+        """
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            env_file = Path(temporary_directory) / ".env"
+            env_file.write_text(
+                "OIKB_API_KEY=oikb-secret\n"
+                "OPEN_WEBUI_API_KEY=webui-secret\n",
+                encoding="utf-8",
+            )
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch.object(TRIGGER, "DEFAULT_ENV_FILE", env_file),
+                patch.object(TRIGGER, "trigger_all_syncs", return_value=2) as trigger,
+            ):
+                result = TRIGGER.main(["oikb_sync.py", "trigger"])
+
+        self.assertEqual(result, 0)
+        trigger.assert_called_once_with(
+            "http://localhost:32001",
+            "oikb-secret",
+            "http://localhost:32000",
+            "webui-secret",
+            [],
             3,
             21600,
             21600,

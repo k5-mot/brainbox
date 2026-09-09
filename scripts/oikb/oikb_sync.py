@@ -356,6 +356,11 @@ def discover_sources(oikb_url: str, source_order: Sequence[str]) -> list[SourceC
         discovered_order.append(name)
 
     names = list(source_order) or discovered_order
+    if not source_order:
+        LOGGER.info(
+            "OIKB source order is not configured; using all discovered sources: %s",
+            ",".join(discovered_order),
+        )
     unknown = [name for name in names if name not in by_name]
     if unknown:
         raise ValueError(f"Unknown OIKB source: {', '.join(unknown)}")
@@ -1098,7 +1103,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--source",
         action="append",
         default=None,
-        help="同期するsource名です。繰り返し指定すると順序を定義します。",
+        help=(
+            "同期するsource名です。繰り返し指定すると順序を定義し、"
+            "未指定時はOIKBの全sourceを設定順に処理します。"
+        ),
     )
     trigger_parser.add_argument(
         "--interval-seconds",
@@ -1144,7 +1152,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--knowledge-id",
         action="append",
         default=[],
-        help="対象Knowledge IDです。繰り返し指定できます。",
+        help=(
+            "対象Knowledge IDです。繰り返し指定でき、"
+            "未指定時はOpen WebUIの全KBを処理します。"
+        ),
     )
     delete_parser.add_argument(
         "--dry-run",
@@ -1252,6 +1263,8 @@ def run_delete_command(
     """
     if not open_webui_api_key:
         parser.error("OPEN_WEBUI_API_KEY environment variable is required")
+    if not args.knowledge_id:
+        LOGGER.info("Knowledge ID is not configured; using all Knowledge Bases")
     if not args.dry_run:
         LOGGER.warning("Delete mode enabled: stuck files cannot be restored")
     count = cleanup_stuck_files(
