@@ -569,6 +569,54 @@ class OikbImagePatchTest(unittest.TestCase):
         )
         self.assertIn("patch-openwebui-synchronous-upload.py", containerfile)
 
+    def test_oikb2_waits_for_each_file_registration(self) -> None:
+        """OIKB2がfile処理とKnowledge linkを1件ずつ確認する。"""
+        patch_module = load_script(
+            "patch_openwebui_sequential_registration",
+            "20-owui/oikb2/patch-openwebui-sequential-registration.py",
+        )
+        source = '''import json
+from typing import Any
+
+    def upload_file(
+        self,
+        file_content: bytes,
+        filename: str,
+        kb_id: str,
+        file_hash: str,
+        directory_id: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /files/ — upload a single file to the KB."""
+        metadata: dict[str, Any] = {
+            "knowledge_id": kb_id,
+            "file_hash": file_hash,
+        }
+        if directory_id:
+            metadata["directory_id"] = directory_id
+
+        resp = self._http.post(
+            "/files/",
+            files={"file": (filename, file_content)},
+            data={"metadata": json.dumps(metadata)},
+        )
+        resp.raise_for_status()
+        return resp.json()
+'''
+
+        patched = patch_module.patch_source(source)
+
+        self.assertIn('params={"process_in_background": "false"}', patched)
+        self.assertIn('/process/status', patched)
+        self.assertIn('f"/knowledge/{kb_id}/files"', patched)
+        self.assertLess(
+            patched.index('status == "completed" and linked'),
+            patched.index("return uploaded_file"),
+        )
+        containerfile = (REPO_ROOT / "20-owui/oikb2/Containerfile").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("patch-openwebui-sequential-registration.py", containerfile)
+
 
 class PendingCheckScriptTest(unittest.TestCase):
     """Open WebUI pending file一覧の分類と表示を検証する。"""
