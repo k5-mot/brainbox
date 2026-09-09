@@ -110,7 +110,28 @@ from typing import Any
                 raise RuntimeError("Open WebUI file status response is invalid")
             status = status_payload.get("status")
             if status == "failed":
-                raise RuntimeError(f"Open WebUI file processing failed: {filename}")
+                detail = status_payload.get("error")
+                if not isinstance(detail, str) or not detail:
+                    try:
+                        file_resp = self._http.get(f"/files/{file_id}")
+                        file_resp.raise_for_status()
+                        file_payload = file_resp.json()
+                        file_data = (
+                            file_payload.get("data")
+                            if isinstance(file_payload, dict)
+                            else None
+                        )
+                        detail = (
+                            file_data.get("error")
+                            if isinstance(file_data, dict)
+                            else None
+                        )
+                    except Exception:
+                        detail = None
+                suffix = f": {detail}" if isinstance(detail, str) and detail else ""
+                raise RuntimeError(
+                    f"Open WebUI file processing failed: {filename}{suffix}"
+                )
 
             linked = False
             page = 1
