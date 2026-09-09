@@ -587,6 +587,7 @@ from typing import Any
         directory_id: str | None = None,
     ) -> dict[str, Any]:
         """POST /files/ — upload a single file to the KB."""
+
         metadata: dict[str, Any] = {
             "knowledge_id": kb_id,
             "file_hash": file_hash,

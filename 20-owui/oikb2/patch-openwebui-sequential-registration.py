@@ -53,44 +53,8 @@ import logging
 import time
 from typing import Any
 """
-    old_upload = '''    def upload_file(
-        self,
-        file_content: bytes,
-        filename: str,
-        kb_id: str,
-        file_hash: str,
-        directory_id: str | None = None,
-    ) -> dict[str, Any]:
-        """POST /files/ — upload a single file to the KB."""
-        metadata: dict[str, Any] = {
-            "knowledge_id": kb_id,
-            "file_hash": file_hash,
-        }
-        if directory_id:
-            metadata["directory_id"] = directory_id
-
-        logging.getLogger(__name__).info(
-            "OIKB2 processing file: knowledge_id=%s file=%s",
-            kb_id,
-            filename,
-        )
-        resp = self._http.post(
-            "/files/",
-            files={"file": (filename, file_content)},
-            data={"metadata": json.dumps(metadata)},
-        )
-        resp.raise_for_status()
-        return resp.json()
-'''
-    new_upload = '''    def upload_file(
-        self,
-        file_content: bytes,
-        filename: str,
-        kb_id: str,
-        file_hash: str,
-        directory_id: str | None = None,
-    ) -> dict[str, Any]:
-        """1 fileを変換しKnowledge Baseへの登録確認まで待機する。
+    old_docstring = '        """POST /files/ — upload a single file to the KB."""\n'
+    new_docstring = '''        """1 fileを変換しKnowledge Baseへの登録確認まで待機する。
 
         Args:
             file_content: uploadするfile内容。
@@ -110,13 +74,20 @@ from typing import Any
         Side Effects:
             Open WebUIへfileをuploadし、Markdown変換、vector作成、Knowledge登録を行う。
         """
-        metadata: dict[str, Any] = {
-            "knowledge_id": kb_id,
-            "file_hash": file_hash,
-        }
-        if directory_id:
-            metadata["directory_id"] = directory_id
-
+'''
+    old_upload_request = '''        resp = self._http.post(
+            "/files/",
+            files={"file": (filename, file_content)},
+            data={"metadata": json.dumps(metadata)},
+        )
+        resp.raise_for_status()
+        return resp.json()
+'''
+    new_upload_request = '''        logging.getLogger(__name__).info(
+            "OIKB2 processing file: knowledge_id=%s file=%s",
+            kb_id,
+            filename,
+        )
         resp = self._http.post(
             "/files/",
             params={"process_in_background": "false"},
@@ -184,12 +155,14 @@ from typing import Any
 '''
     if old_imports not in source:
         raise RuntimeError("oikb.client import patch target was not found")
-    if old_upload not in source:
+    if old_docstring not in source:
+        raise RuntimeError("oikb.client upload docstring patch target was not found")
+    if old_upload_request not in source:
         raise RuntimeError("oikb.client upload patch target was not found")
-    return source.replace(old_imports, new_imports, 1).replace(
-        old_upload,
-        new_upload,
-        1,
+    return (
+        source.replace(old_imports, new_imports, 1)
+        .replace(old_docstring, new_docstring, 1)
+        .replace(old_upload_request, new_upload_request, 1)
     )
 
 
