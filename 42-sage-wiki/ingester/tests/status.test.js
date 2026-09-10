@@ -43,7 +43,17 @@ test('status APIとWeb UIから同じIngester状態を確認できる', async ()
 
     const pageResponse = await fetch(`http://127.0.0.1:${address.port}/`);
     assert.equal(pageResponse.status, 200);
-    assert.match(await pageResponse.text(), /Sage Wiki Ingester/);
+    const page = await pageResponse.text();
+    assert.match(page, /Sage Wiki Ingester/);
+    assert.match(page, /data-trigger-source="obsidian-couchdb"/);
+    assert.match(page, /<script src="\/status\.js"><\/script>/);
+
+    const scriptResponse = await fetch(`http://127.0.0.1:${address.port}/status.js`);
+    assert.equal(scriptResponse.status, 200);
+    assert.match(scriptResponse.headers.get('content-security-policy') ?? '', /script-src 'self'/);
+    const script = await scriptResponse.text();
+    assert.match(script, /fetch\('\/api\/sources\/'/);
+    assert.match(script, /authorization: 'Bearer ' \+ token/);
 
     const unauthorizedResponse = await fetch(
       `http://127.0.0.1:${address.port}/api/sources/obsidian-couchdb/ingest`,
@@ -68,6 +78,12 @@ test('status APIとWeb UIから同じIngester状態を確認できる', async ()
     });
     assert.equal(triggeredSource, 'obsidian-couchdb');
     assert.equal(snapshot.sources[0].state, 'queued');
+
+    const queuedPageResponse = await fetch(`http://127.0.0.1:${address.port}/`);
+    assert.match(
+      await queuedPageResponse.text(),
+      /class="queued">queued[\s\S]*data-trigger-source="obsidian-couchdb" disabled/,
+    );
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

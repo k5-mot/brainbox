@@ -30,6 +30,47 @@ export interface IngesterRuntimeStatus {
 type StatusProvider = () => IngesterRuntimeStatus;
 type SourceTrigger = (sourceId: string) => TriggerResult;
 
+const STATUS_SCRIPT = String.raw`const TOKEN_STORAGE_KEY = 'sage-wiki-ingester-token';
+
+for (const button of document.querySelectorAll('[data-trigger-source]')) {
+  button.addEventListener('click', triggerSource);
+}
+
+/**
+ * 選択したsourceを常駐Ingesterのqueueへ登録する。
+ * @param {MouseEvent} event manual triggerのclick event。
+ * @returns {Promise<void>} API requestと画面更新の完了時にresolveするPromise。
+ */
+async function triggerSource(event) {
+  const button = event.currentTarget;
+  if (!(button instanceof HTMLButtonElement)) return;
+  const sourceId = button.dataset.triggerSource;
+  if (!sourceId) return;
+
+  let token = sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? '';
+  if (!token) {
+    token = window.prompt('SAGE_WIKI_TOKENを入力してください')?.trim() ?? '';
+    if (!token) return;
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+  }
+
+  button.disabled = true;
+  button.textContent = 'Queuing...';
+  try {
+    const response = await fetch('/api/sources/' + encodeURIComponent(sourceId) + '/ingest', {
+      method: 'POST',
+      headers: {authorization: 'Bearer ' + token},
+    });
+    if (response.status === 401) sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    if (!response.ok) throw new Error((await response.text()).trim() || 'HTTP ' + response.status);
+    window.location.reload();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = 'Run now';
+    window.alert(error instanceof Error ? error.message : String(error));
+  }
+}`;
+
 /**
  * Ingester状態をJSONと単一HTML pageで公開するHTTP serverを開始する。
  * @param port listenするTCP port。0を指定すると空きportを自動選択する。
@@ -54,6 +95,10 @@ export async function startStatusServer(
     }
     if (request.method === 'GET' && pathname === '/api/status') {
       send(response, 200, 'application/json; charset=utf-8', `${JSON.stringify(getStatus())}\n`);
+      return;
+    }
+    if (request.method === 'GET' && pathname === '/status.js') {
+      send(response, 200, 'text/javascript; charset=utf-8', STATUS_SCRIPT);
       return;
     }
     if (request.method === 'GET' && pathname === '/') {
@@ -131,7 +176,7 @@ function send(
     'content-length': Buffer.byteLength(body),
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
-    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'",
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'",
   });
   response.end(body);
 }
@@ -142,7 +187,8 @@ function send(
  * @returns browserへ返す完全なHTML document。
  */
 function renderStatusPage(status: IngesterRuntimeStatus): string {
-  const rows = status.sources.map(renderSourceRow).join('');
+  let rows = '';
+  for (const source of status.sources) rows += renderSourceRow(source, status.ready);
   return `<!doctype html>
 <html lang="ja">
 <head>
@@ -156,6 +202,8 @@ function renderStatusPage(status: IngesterRuntimeStatus): string {
     .muted{color:#94a3b8}.ok{color:#34d399}.error{color:#fb7185}.running,.queued{color:#60a5fa}
     table{width:100%;margin-top:24px;border-collapse:collapse;background:#172033;border:1px solid #334155}
     th,td{padding:12px;text-align:left;vertical-align:top;border-bottom:1px solid #334155}th{color:#94a3b8}
+    button{padding:7px 12px;border:1px solid #60a5fa;border-radius:6px;background:#1d4ed8;color:#fff;cursor:pointer}
+    button:disabled{border-color:#475569;background:#334155;color:#94a3b8;cursor:not-allowed}
     code{font-family:ui-monospace,monospace}footer{margin-top:16px;font-size:13px;color:#64748b}
   </style>
 </head>
@@ -164,10 +212,11 @@ function renderStatusPage(status: IngesterRuntimeStatus): string {
   <div class="${status.ready ? 'ok' : 'running'}">${status.ready ? 'Ready' : 'Starting'}</div>
   <p class="muted">Project: <code>${escapeHtml(status.projectRoot)}</code> · Timezone: ${escapeHtml(status.timezone)} · Started: ${escapeHtml(status.startedAt)}</p>
   <table>
-    <thead><tr><th>Source</th><th>Status</th><th>Schedule</th><th>Last result</th></tr></thead>
+    <thead><tr><th>Source</th><th>Status</th><th>Schedule</th><th>Last result</th><th>Manual trigger</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <footer>10秒ごとに自動更新 · JSON: <code>/api/status</code></footer>
+  <script src="/status.js"></script>
 </body>
 </html>`;
 }
@@ -175,19 +224,26 @@ function renderStatusPage(status: IngesterRuntimeStatus): string {
 /**
  * 1つのsource状態をHTML table rowへ変換する。
  * @param source 表示するsource状態。
+ * @param ready Ingesterがmanual triggerを受け付けられる場合はtrue。
  * @returns escape済みのHTML table row。
  */
-function renderSourceRow(source: SourceRuntimeStatus): string {
-  const stateClass = source.state === 'error' ? 'error' : source.state === 'running' ? 'running' : 'ok';
+function renderSourceRow(source: SourceRuntimeStatus, ready: boolean): string {
+  const stateClass = source.state === 'error'
+    ? 'error'
+    : source.state === 'running' || source.state === 'queued'
+      ? source.state
+      : 'ok';
   const result = source.lastSummary
     ? `${source.lastSummary.documents} docs · +${source.lastSummary.created} / ~${source.lastSummary.updated} / =${source.lastSummary.unchanged} / -${source.lastSummary.removed}`
     : source.lastError ?? '未実行';
   const completed = source.completedAt ? `<br><span class="muted">${escapeHtml(source.completedAt)}</span>` : '';
+  const triggerDisabled = !ready || !source.enabled || source.state === 'queued' || source.state === 'running';
   return `<tr>
     <td><strong>${escapeHtml(source.id)}</strong><br><span class="muted">${escapeHtml(source.adapter)}</span></td>
     <td class="${stateClass}">${escapeHtml(source.state)}${completed}</td>
     <td><code>${escapeHtml(source.schedule)}</code><br><span class="muted">${source.enabled ? 'enabled' : 'disabled'}</span></td>
     <td>${escapeHtml(result)}</td>
+    <td><button type="button" data-trigger-source="${escapeHtml(source.id)}"${triggerDisabled ? ' disabled' : ''}>Run now</button></td>
   </tr>`;
 }
 

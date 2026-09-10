@@ -89,7 +89,7 @@ curl --fail-with-body --request POST \
 
 ## Ingester status
 
-`http://${PUBLIC_HOST}:34201/`でIngesterの稼働状態、sourceごとのschedule、manual triggerを含む実行中または最終同期の結果とerrorを確認できる。画面は10秒ごとに自動更新する。機械可読な同じ状態は`/api/status`で公開する。
+`http://${PUBLIC_HOST}:34201/`でIngesterの稼働状態、sourceごとのschedule、manual triggerを含む実行中または最終同期の結果とerrorを確認できる。各sourceの`Run now`を押すと、常駐processのqueueを使って即時同期する。初回は`SAGE_WIKI_TOKEN`を入力し、tokenは同じbrowser tabを閉じるまで保持される。画面は10秒ごとに自動更新する。機械可読な同じ状態は`/api/status`で公開する。
 
 ```bash
 # Ingester status APIを確認する。
