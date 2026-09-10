@@ -28,7 +28,7 @@ readonly PROFILES=(
 #   "zulip"
 #   "gitlab"
   "obsidian"
-  "llmwiki"
+#   "llmwiki"
   "sage-wiki"
 #   "o11y"
   "langfuse"
