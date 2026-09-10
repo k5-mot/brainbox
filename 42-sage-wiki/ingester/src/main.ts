@@ -14,6 +14,7 @@ import {
   type IngesterRuntimeStatus,
   type SourceRuntimeStatus,
   startStatusServer,
+  type TriggerResult,
 } from './status.js';
 
 type Job = () => Promise<unknown>;
@@ -77,11 +78,18 @@ async function main(): Promise<void> {
 
   const status = createRuntimeStatus(config);
   for (const source of config.sources) validateSchedule(source.ingest.schedule, config.timezone);
+  const token = process.env.SAGE_WIKI_TOKEN;
+  if (!token) throw new Error('SAGE_WIKI_TOKENが未設定です');
+  const queue = new SerialJobQueue();
   const port = statusPort(process.env.STATUS_PORT);
-  const statusServer = await startStatusServer(port, () => status);
+  const statusServer = await startStatusServer(
+    port,
+    () => status,
+    (sourceId) => enqueueManualIngest(config, queue, status, sourceId),
+    token,
+  );
   log('info', 'status.ready', {port});
   await runStartupIngests(config, status);
-  const queue = new SerialJobQueue();
   const schedules = startSchedules(config, queue, status);
   status.ready = true;
   registerShutdown(schedules, queue, statusServer, status);
@@ -90,6 +98,35 @@ async function main(): Promise<void> {
     sources: config.sources.length,
     schedules: schedules.length,
   });
+}
+
+/**
+ * manual ingestを常駐processの直列queueへ登録する。
+ * @param config sourceとproject rootを含むIngester設定。
+ * @param queue 同期処理を直列化するqueue。
+ * @param status Web UIへ公開するruntime status。
+ * @param sourceId 同期対象sourceのID。
+ * @returns trigger要求の受付結果。
+ * @sideeffect 対象sourceの状態をqueuedへ変更し、同期jobを登録する。
+ */
+function enqueueManualIngest(
+  config: IngesterConfig,
+  queue: SerialJobQueue,
+  status: IngesterRuntimeStatus,
+  sourceId: string,
+): TriggerResult {
+  if (!status.ready) return 'busy';
+  const source = config.sources.find((candidate) => candidate.id === sourceId);
+  if (!source) return 'not-found';
+  if (!source.ingest.enabled) return 'disabled';
+  const runtimeStatus = sourceStatus(status, sourceId);
+  if (runtimeStatus.state === 'queued' || runtimeStatus.state === 'running') return 'busy';
+  runtimeStatus.state = 'queued';
+  void queue.enqueue(
+    `ingest:${source.id}:manual`,
+    () => runTrackedSource(config.projectRoot, source, runtimeStatus),
+  );
+  return 'accepted';
 }
 
 /**

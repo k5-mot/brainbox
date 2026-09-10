@@ -11,6 +11,7 @@ services:
     environment:
       CONFIG_PATH: /app/config.yaml
       STATUS_PORT: "3333"
+      SAGE_WIKI_TOKEN: ${SAGE_WIKI_TOKEN:-sk-sage-wiki-token}
       COUCHDB_USERNAME: ${OBSIDIAN_COUCHDB_USER:-obs_couchdb_user}
       COUCHDB_PASSWORD: ${OBSIDIAN_COUCHDB_PASSWORD:-obs_couchdb_password}
     ports:

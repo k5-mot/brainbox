@@ -4,6 +4,8 @@ Sage Wiki `v0.2.10`を、LLMによる知識コンパイル、検索、知識grap
 
 LLM処理は既存のLiteLLMへOpenAI互換APIで接続する。生成modelには`openai/gpt-oss:20b`、embedding modelには`Qwen/Qwen3-Embedding:0.6B`を使用する。credentialの値はrepositoryへ保存せず、`LITELLM_MASTER_KEY`環境変数から取得する。
 
+この文書の`docker compose` commandは、`42-sage-wiki/`ではなくrepository rootで実行しなければならない（MUST）。Sage WikiはrootのComposeがincludeするCouchDB、LiteLLMおよびembedding serviceへ依存する。
+
 ## 設定
 
 Sage Wikiの運用設定は[config.yaml](https://github.com/k5-mot/inferlab/blob/main/42-sage-wiki/config.yaml)、source adapterとscheduleの設定は[ingester-config.yaml](https://github.com/k5-mot/inferlab/blob/main/42-sage-wiki/ingester-config.yaml)に置く。sourceごとに`adapter`、`run_on_start`および`schedule`を設定できる。設定を変更した場合はcontainerを再作成する。Web UIのBearer tokenは`.env`の`SAGE_WIKI_TOKEN`、DNS rebinding対策の許可hostは共通の`PUBLIC_HOST`から注入する。`gpt-oss:20b`の要約では推論だけで出力上限を消費しないよう、`api.extra_params.reasoning_effort: low`を指定する。
@@ -57,25 +59,37 @@ SAGE_WIKI_NPM_PACKAGES_DIR=/srv/npm docker compose -f docker-compose.yml -f 42-s
 
 `40-obsidian`のCouchDB `obsidian` databaseを取り込み元とする。LiveSyncの非削除Markdown親documentを対象に、分割された本文を`children`順に復元し、`sources/`へMarkdown snapshotを生成する。hidden path、Markdown以外、空本文および`ix:`で始まるpathは取り込まない。
 
-`run_on_start: true`により、常駐する`sage-wiki-ingester`が起動時に1回同期してからcronを登録する。手動で即時再同期する場合も同じserviceと設定を使用する。
+`run_on_start: true`により、常駐する`sage-wiki-ingester`が起動時に1回同期してからcronを登録する。手動同期は常駐processのHTTP APIへ要求し、cronと同じ直列queueおよびruntime statusを使用する。
 
 ```bash
-# CouchDBから最新snapshotを再取得する。
-docker compose --profile sage-wiki run --rm --no-deps sage-wiki-ingester node dist/main.js ingest obsidian-couchdb
+# `.env`の設定値を現在のshellへexportする。
+set -a
+source .env
+set +a
+
+# 常駐IngesterへCouchDBの即時同期を要求する。
+curl --fail-with-body --request POST \
+  --header "Authorization: Bearer ${SAGE_WIKI_TOKEN}" \
+  "http://${PUBLIC_HOST}:34201/api/sources/obsidian-couchdb/ingest"
 ```
+
+`.env`の値はComposeがcontainerへ渡すが、shell変数としては自動exportされない。上記commandを実行するshellでは`PUBLIC_HOST`と`SAGE_WIKI_TOKEN`を事前にexportしなければならない（MUST）。正常に受け付けた場合はHTTP `202 Accepted`と`{"source":"obsidian-couchdb","state":"queued"}`を返す。
+
+`docker compose run`は一時container、`docker compose exec ... node dist/main.js ingest ...`は別Node.js processを起動する。どちらも常駐processのqueueとWeb UI statusを経由しないため、運用上のmanual triggerに使用してはならない（MUST NOT）。serviceの再起動は`run_on_start`を再実行するが、manual triggerの代替として常用すべきではない（SHOULD NOT）。
 
 期待結果:
 
 - CouchDB由来のMarkdownが`sage-wiki-project` volumeの`sources/`へ保存される。
+- Ingester statusが`queued`、`running`、`success`の順に遷移する。
 - `sage-wiki`の内蔵workerが変更を検知し、生成Wikiとindexを更新する。
 
 失敗基準:
 
-- CouchDBへの接続、credential、LiveSync documentの復元またはvolumeへの書込に失敗する。
+- HTTP statusが`202`以外、またはCouchDBへの接続、credential、LiveSync documentの復元もしくはvolumeへの書込に失敗する。
 
 ## Ingester status
 
-`http://${PUBLIC_HOST}:34201/`でIngesterの稼働状態、sourceごとのschedule、実行中または最終同期の結果とerrorを確認できる。画面は10秒ごとに自動更新する。機械可読な同じ状態は`/api/status`で公開する。
+`http://${PUBLIC_HOST}:34201/`でIngesterの稼働状態、sourceごとのschedule、manual triggerを含む実行中または最終同期の結果とerrorを確認できる。画面は10秒ごとに自動更新する。機械可読な同じ状態は`/api/status`で公開する。
 
 ```bash
 # Ingester status APIを確認する。
@@ -133,6 +147,32 @@ docker compose exec sage-wiki sage-wiki status
 失敗基準:
 
 - LiteLLMへ接続できない、model名が解決できない、またはsourceの解析に失敗する。
+
+## Web UIでの閲覧
+
+Sage WikiのWeb UIとAPIはBearer tokenで保護される。初回表示、新しいtabおよびpage再読込では、tokenをquery parameterへ付けたURLを使用しなければならない（MUST）。tokenなしの`http://${PUBLIC_HOST}:34200/`はHTML shellだけを返すが、Web UIが呼び出す`/api/tree`はHTTP `401 Unauthorized`となるため、sidebarとgraphが空に見える。
+
+```text
+http://${PUBLIC_HOST}:34200/?token=${SAGE_WIKI_TOKEN}
+```
+
+```bash
+# Web UIが使用する認証済み記事treeを確認する。
+curl --fail \
+  --header "Authorization: Bearer ${SAGE_WIKI_TOKEN}" \
+  "http://${PUBLIC_HOST}:34200/api/tree"
+```
+
+期待結果:
+
+- sidebarへ`concepts`と`summaries`が表示される。
+- graphへconcept nodeが表示され、記事を選択して本文を閲覧できる。
+- `/api/tree`の`stats.concepts`と`stats.summaries`がともに1以上になる。
+
+失敗基準:
+
+- `/api/tree`がHTTP `401`を返す場合は、URLまたはAuthorization headerへtokenが指定されていない。
+- `/api/tree`がHTTP `200`でも件数が0の場合は、`docker compose --profile sage-wiki logs sage-wiki`で知識コンパイルとLiteLLMのerrorを確認する。
 
 ## MCP
 
