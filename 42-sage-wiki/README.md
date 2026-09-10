@@ -2,7 +2,9 @@
 
 Sage Wiki `v0.2.10`を、LLMによる知識コンパイル、検索、知識graph、Web UI、REST APIおよびMCP serverに使用する。`sage-wiki-ingester`が設定されたsourceを起動時とcronで同期し、状態確認用Web UIを公開する。`sage-wiki`の内蔵workerはsource変更を検知してcompileし、生成結果のWeb UI、APIおよびMCPを公開する。両serviceは`sage-wiki-project` named volumeを共有する。
 
-LLM処理は既存のLiteLLMへOpenAI互換APIで接続する。生成modelには`openai/gpt-oss:20b`、embedding modelには`Qwen/Qwen3-Embedding:0.6B`を使用する。credentialの値はrepositoryへ保存せず、`LITELLM_MASTER_KEY`環境変数から取得する。
+LLM処理は既存のLiteLLMへOpenAI互換APIで接続する。通常の要約には`openai/gpt-oss:20b`、concept抽出、relation抽出および記事生成には`google/gemma4:31b`、embeddingには`Qwen/Qwen3-Embedding:0.6B`を使用する。credentialの値はrepositoryへ保存せず、`LITELLM_MASTER_KEY`環境変数から取得する。
+
+この文書の`docker compose` commandは、`42-sage-wiki/`ではなくrepository rootで実行しなければならない（MUST）。Sage WikiはrootのComposeがincludeするCouchDB、LiteLLMおよびembedding serviceへ依存する。
 
 ## 設定
 
@@ -57,25 +59,37 @@ SAGE_WIKI_NPM_PACKAGES_DIR=/srv/npm docker compose -f docker-compose.yml -f 42-s
 
 `40-obsidian`のCouchDB `obsidian` databaseを取り込み元とする。LiveSyncの非削除Markdown親documentを対象に、分割された本文を`children`順に復元し、`sources/`へMarkdown snapshotを生成する。hidden path、Markdown以外、空本文および`ix:`で始まるpathは取り込まない。
 
-`run_on_start: true`により、常駐する`sage-wiki-ingester`が起動時に1回同期してからcronを登録する。手動で即時再同期する場合も同じserviceと設定を使用する。
+`run_on_start: true`により、常駐する`sage-wiki-ingester`が起動時に1回同期してからcronを登録する。手動同期は常駐processのHTTP APIへ要求し、cronと同じ直列queueおよびruntime statusを使用する。
 
 ```bash
-# CouchDBから最新snapshotを再取得する。
-docker compose --profile sage-wiki run --rm --no-deps sage-wiki-ingester node dist/main.js ingest obsidian-couchdb
+# `.env`の設定値を現在のshellへexportする。
+set -a
+source .env
+set +a
+
+# 常駐IngesterへCouchDBの即時同期を要求する。
+curl --fail-with-body --request POST \
+  --header "Authorization: Bearer ${SAGE_WIKI_TOKEN}" \
+  "http://${PUBLIC_HOST}:34201/api/sources/obsidian-couchdb/ingest"
 ```
+
+`.env`の値はComposeがcontainerへ渡すが、shell変数としては自動exportされない。上記commandを実行するshellでは`PUBLIC_HOST`と`SAGE_WIKI_TOKEN`を事前にexportしなければならない（MUST）。正常に受け付けた場合はHTTP `202 Accepted`と`{"source":"obsidian-couchdb","state":"queued"}`を返す。
+
+`docker compose run`は一時container、`docker compose exec ... node dist/main.js ingest ...`は別Node.js processを起動する。どちらも常駐processのqueueとWeb UI statusを経由しないため、運用上のmanual triggerに使用してはならない（MUST NOT）。serviceの再起動は`run_on_start`を再実行するが、manual triggerの代替として常用すべきではない（SHOULD NOT）。
 
 期待結果:
 
 - CouchDB由来のMarkdownが`sage-wiki-project` volumeの`sources/`へ保存される。
+- Ingester statusが`queued`、`running`、`success`の順に遷移する。
 - `sage-wiki`の内蔵workerが変更を検知し、生成Wikiとindexを更新する。
 
 失敗基準:
 
-- CouchDBへの接続、credential、LiveSync documentの復元またはvolumeへの書込に失敗する。
+- HTTP statusが`202`以外、またはCouchDBへの接続、credential、LiveSync documentの復元もしくはvolumeへの書込に失敗する。
 
 ## Ingester status
 
-`http://${PUBLIC_HOST}:34201/`でIngesterの稼働状態、sourceごとのschedule、実行中または最終同期の結果とerrorを確認できる。画面は10秒ごとに自動更新する。機械可読な同じ状態は`/api/status`で公開する。
+`http://${PUBLIC_HOST}:34201/`でIngesterの稼働状態、sourceごとのschedule、manual triggerを含む実行中または最終同期の結果とerrorを確認できる。各sourceの`Run now`を押すと、常駐processのqueueを使って即時同期する。`Force re-extract`はsource同期とは別の操作として表示する。初回は`SAGE_WIKI_TOKEN`を入力し、tokenは同じbrowser tabを閉じるまで保持される。画面は10秒ごとに自動更新する。機械可読な同じ状態は`/api/status`で公開する。
 
 ```bash
 # Ingester status APIを確認する。
@@ -90,6 +104,46 @@ curl --fail "http://${PUBLIC_HOST}:34201/api/status"
 失敗基準:
 
 - HTTP statusが200以外、またはsourceの最終同期状態が`error`になる。
+
+## Concept graphのForce re-extract
+
+全体Graphに意味のあるconcept間edgeが不足している場合は、Ingester Web UIの`Force re-extract`を使用する。この操作はsource別の`Run now`とは異なり、既存の全summaryに対して`sage-wiki compile --re-extract`を実行し、concept抽出、LLMによるrelation抽出および記事生成をやり直す。
+
+[config.yaml](https://github.com/k5-mot/inferlab/blob/main/42-sage-wiki/config.yaml)では、JSON出力の途中切れを避けるため`extract_batch_size: 1`、concept抽出とtriple抽出の上限を`16384` token、記事生成の上限を`8192` tokenに設定する。再抽出はsummaryごとのLLM呼出しを伴い、長時間動作する。実行中もIngester Web UIと`/api/status`で`queued`、`running`、`success`または`error`を確認できる。同じ直列queueを使うため、source同期と再抽出は同時に共有projectを書き換えない。
+
+```bash
+# `.env`の設定値を現在のshellへexportする。
+set -a
+source .env
+set +a
+
+# 常駐Ingesterへ全summaryの再抽出を要求する。
+curl --fail-with-body --request POST \
+  --header "Authorization: Bearer ${SAGE_WIKI_TOKEN}" \
+  "http://${PUBLIC_HOST}:34201/api/force-reextract"
+
+# Force re-extractの進行状態を確認する。
+curl --fail "http://${PUBLIC_HOST}:34201/api/status"
+
+# concept間edgeを含む全体Graph APIを確認する。
+curl --fail \
+  --header "Authorization: Bearer ${SAGE_WIKI_TOKEN}" \
+  "http://${PUBLIC_HOST}:34200/api/graph"
+```
+
+正常に受け付けた場合はHTTP `202 Accepted`と`{"job":"force-reextract","state":"queued"}`を返す。`queued`または`running`の間に重ねて要求した場合はHTTP `409 Conflict`を返す。
+
+期待結果:
+
+- Ingester statusの`forceReextract.state`が`queued`、`running`、`success`の順に遷移する。
+- 完了後の`/api/graph`にconcept node同士を結ぶedgeが1件以上含まれる。
+- `http://${PUBLIC_HOST}:34200/?token=${SAGE_WIKI_TOKEN}`の全体Graphにnodeとedgeが表示される。
+
+失敗基準:
+
+- `forceReextract.state`が`error`になり、`lastError`へSage Wiki CLIの終了errorが表示される。
+- LiteLLMのmodel解決、token上限、provider timeoutまたはstructured JSON生成に失敗する。
+- 完了後もconcept間edgeが0件の場合は、IngesterとLiteLLMのlogでtriple extractionのerrorを確認する。
 
 ## 起動
 
@@ -133,6 +187,32 @@ docker compose exec sage-wiki sage-wiki status
 失敗基準:
 
 - LiteLLMへ接続できない、model名が解決できない、またはsourceの解析に失敗する。
+
+## Web UIでの閲覧
+
+Sage WikiのWeb UIとAPIはBearer tokenで保護される。初回表示、新しいtabおよびpage再読込では、tokenをquery parameterへ付けたURLを使用しなければならない（MUST）。tokenなしの`http://${PUBLIC_HOST}:34200/`はHTML shellだけを返すが、Web UIが呼び出す`/api/tree`はHTTP `401 Unauthorized`となるため、sidebarとgraphが空に見える。
+
+```text
+http://${PUBLIC_HOST}:34200/?token=${SAGE_WIKI_TOKEN}
+```
+
+```bash
+# Web UIが使用する認証済み記事treeを確認する。
+curl --fail \
+  --header "Authorization: Bearer ${SAGE_WIKI_TOKEN}" \
+  "http://${PUBLIC_HOST}:34200/api/tree"
+```
+
+期待結果:
+
+- sidebarへ`concepts`と`summaries`が表示される。
+- graphへconcept nodeが表示され、記事を選択して本文を閲覧できる。
+- `/api/tree`の`stats.concepts`と`stats.summaries`がともに1以上になる。
+
+失敗基準:
+
+- `/api/tree`がHTTP `401`を返す場合は、URLまたはAuthorization headerへtokenが指定されていない。
+- `/api/tree`がHTTP `200`でも件数が0の場合は、`docker compose --profile sage-wiki logs sage-wiki`で知識コンパイルとLiteLLMのerrorを確認する。
 
 ## MCP
 

@@ -11,12 +11,15 @@ services:
     environment:
       CONFIG_PATH: /app/config.yaml
       STATUS_PORT: "3333"
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key}
+      SAGE_WIKI_TOKEN: ${SAGE_WIKI_TOKEN:-sk-sage-wiki-token}
       COUCHDB_USERNAME: ${OBSIDIAN_COUCHDB_USER:-obs_couchdb_user}
       COUCHDB_PASSWORD: ${OBSIDIAN_COUCHDB_PASSWORD:-obs_couchdb_password}
     ports:
       - "34201:3333"
     volumes:
       - ./ingester-config.yaml:/app/config.yaml:ro
+      - ./config.yaml:/wiki/config.yaml:ro
       - sage-wiki-project:/wiki
     networks:
       - internal-nw
@@ -87,7 +90,7 @@ services:
     labels:
       - homepage.group=42-sage-wiki
       - homepage.name=Sage Wiki
-      - homepage.href=http://${PUBLIC_HOST}:34200
+      - homepage.href=http://${PUBLIC_HOST}:34200/?token=${SAGE_WIKI_TOKEN:-sk-sage-wiki-token}
       - homepage.description=LLM knowledge graph and wiki
       - homepage.icon=/icons/llm-wiki.png
 

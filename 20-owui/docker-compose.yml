@@ -51,7 +51,6 @@ services:
       OTEL_METRICS_OTLP_SPAN_EXPORTER: http
       OTEL_SERVICE_NAME: open-webui
       OTEL_METRICS_EXPORT_INTERVAL_MILLIS: "15000"
-      # ENABLE_TITLE_GENERATION: "false"
       ENABLE_CALENDAR: "true"
       ENABLE_CHANNELS: "true"
       ENABLE_FOLDERS: "true"
@@ -65,6 +64,7 @@ services:
       TASK_MODEL: "google/gemma4:31b"
       ENABLE_CONTEXT_COMPACTION: "true"
       ENABLE_FOLLOW_UP_GENERATION: "false"
+      ENABLE_TITLE_GENERATION: "false"
       ### MCPO
       ENABLE_DIRECT_CONNECTIONS: "true"
       TOOL_SERVER_CONNECTIONS: >-
@@ -183,22 +183,33 @@ services:
         ]
       ### For Embedding model on LiteLLM
       RAG_EMBEDDING_ENGINE: openai
-      RAG_EMBEDDING_MODEL: "Qwen/Qwen3-Embedding:0.6B"
       RAG_OPENAI_API_BASE_URL: http://litellm:4000/v1
       RAG_OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key}
+      RAG_EMBEDDING_MODEL: "Qwen/Qwen3-Embedding:0.6B"
+      # RAG_EMBEDDING_QUERY_PREFIX: "Instruct: Given a technical documentation search query, retrieve relevant passages that answer the query\nQuery: "
+      RAG_TEXT_SPLITTER: "token"
+      ENABLE_MARKDOWN_HEADER_TEXT_SPLITTER: "true"
+      RAG_TOKENIZER_MODEL: "/models/Qwen--Qwen3-Embedding-0.6B"
+      CHUNK_SIZE: "2000"
+      CHUNK_OVERLAP: "200"
+      CHUNK_MIN_SIZE_TARGET: "1000"
       RAG_EMBEDDING_BATCH_SIZE: "4"
       RAG_EMBEDDING_CONCURRENT_REQUESTS: "2"
-      RAG_TEXT_SPLITTER: token
-      CHUNK_SIZE: 1500
-      CHUNK_OVERLAP: 150
+      ENABLE_ASYNC_EMBEDDING: "false"
+      RAG_SYSTEM_CONTEXT: "true"
       ### For Reranking model on LiteLLM
+      RAG_FULL_CONTEXT: "false"
       ENABLE_RAG_HYBRID_SEARCH: "true"
+      ENABLE_RAG_HYBRID_SEARCH_ENRICHED_TEXTS: "true"
       RAG_RERANKING_ENGINE: "external"
       RAG_EXTERNAL_RERANKER_URL: "http://litellm:4000"
       RAG_EXTERNAL_RERANKER_API_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key}
       RAG_RERANKING_MODEL: "Qwen/Qwen3-Reranker:0.6B"
-      RAG_TOP_K: 12
-      RAG_TOP_K_RERANKER: 6
+      RAG_TOP_K: "16"
+      RAG_TOP_K_RERANKER: "8"
+      RAG_RELEVANCE_THRESHOLD: "0.10"
+      RAG_HYBRID_BM25_WEIGHT: "0.4"
+      RAG_RERANKING_BATCH_SIZE: "4"
       ### For Docling (Content Extraction)
       # https://github.com/docling-project/docling/blob/main/docling/datamodel/vlm_engine_options.py
       # https://github.com/docling-project/docling/blob/main/docling/datamodel/stage_model_specs.py
@@ -239,6 +250,8 @@ services:
       - ./open-webui/docling_params_slim.json:/run/config/docling_params.json:ro
       - ./open-webui/entrypoint_patch.sh:/run/scripts/entrypoint_patch.sh:ro
       - ./open-webui/export_docling_params.py:/run/scripts/export_docling_params.py:ro
+      - ./open-webui/export_docling_params.py:/run/scripts/export_docling_params.py:ro
+      - /srv/hfrepo:/models:ro
     networks:
       - internal-nw
     depends_on:
@@ -275,7 +288,6 @@ services:
 
   # https://github.com/open-webui/open-terminal
   # https://docs.openwebui.com/reference/env-configuration/#terminal_server_connections
-
   open-terminal:
     <<: *external-dns-stabilizer
     image: ghcr.io/open-webui/open-terminal:0.12.3

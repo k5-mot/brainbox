@@ -21,8 +21,8 @@ api:
 
 models:
   summarize: openai/gpt-oss:20b
-  extract: openai/gpt-oss:20b
-  write: openai/gpt-oss:20b
+  extract: google/gemma4:31b
+  write: google/gemma4:31b
   lint: openai/gpt-oss:20b
   query: openai/gpt-oss:20b
 
@@ -36,7 +36,9 @@ compiler:
   max_parallel: 2
   debounce_seconds: 2
   summary_max_tokens: 4000
-  article_max_tokens: 4000
+  article_max_tokens: 8192
+  extract_max_tokens: 16384
+  extract_batch_size: 1
   auto_commit: true
   auto_lint: true
   timezone: Asia/Tokyo
@@ -54,3 +56,9 @@ serve:
   port: 3333
   worker:
     enabled: true
+
+ontology:
+  triples:
+    enabled: true
+    model: google/gemma4:31b
+    max_tokens: 16384

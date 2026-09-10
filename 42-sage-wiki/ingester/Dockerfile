@@ -1,3 +1,5 @@
+FROM ghcr.io/xoai/sage-wiki:v0.2.10 AS sage-wiki
+
 FROM docker.io/library/node:24.20.0-bookworm-slim AS builder
 
 WORKDIR /app
@@ -22,6 +24,7 @@ WORKDIR /app
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY --from=sage-wiki /usr/local/bin/sage-wiki /usr/local/bin/sage-wiki
 
 RUN mkdir -p /wiki/sources /wiki/wiki /wiki/.sage-ingester \
     && chown -R node:node /wiki
