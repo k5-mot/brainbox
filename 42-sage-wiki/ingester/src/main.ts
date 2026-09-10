@@ -1,3 +1,4 @@
+import {spawn} from 'node:child_process';
 import {mkdir} from 'node:fs/promises';
 import type {Server} from 'node:http';
 import path from 'node:path';
@@ -12,6 +13,7 @@ import {
 import {synchronizeCouchDb, type SyncSummary} from './couchdb.js';
 import {
   type IngesterRuntimeStatus,
+  type ForceReextractRuntimeStatus,
   type SourceRuntimeStatus,
   startStatusServer,
   type TriggerResult,
@@ -86,6 +88,7 @@ async function main(): Promise<void> {
     port,
     () => status,
     (sourceId) => enqueueManualIngest(config, queue, status, sourceId),
+    () => enqueueForceReextract(config, queue, status),
     token,
   );
   log('info', 'status.ready', {port});
@@ -98,6 +101,30 @@ async function main(): Promise<void> {
     sources: config.sources.length,
     schedules: schedules.length,
   });
+}
+
+/**
+ * 全summaryの再抽出を常駐processの直列queueへ登録する。
+ * @param config project rootを含むIngester設定。
+ * @param queue source同期と再抽出を直列化するqueue。
+ * @param status Web UIへ公開するruntime status。
+ * @returns trigger要求の受付結果。
+ * @sideeffect Force re-extract状態をqueuedへ変更し、再抽出jobを登録する。
+ */
+function enqueueForceReextract(
+  config: IngesterConfig,
+  queue: SerialJobQueue,
+  status: IngesterRuntimeStatus,
+): TriggerResult {
+  if (!status.ready) return 'busy';
+  const forceStatus = status.forceReextract;
+  if (forceStatus.state === 'queued' || forceStatus.state === 'running') return 'busy';
+  forceStatus.state = 'queued';
+  void queue.enqueue(
+    'compile:force-reextract',
+    () => runTrackedForceReextract(config.projectRoot, forceStatus),
+  );
+  return 'accepted';
 }
 
 /**
@@ -204,6 +231,68 @@ async function runTrackedSource(
 }
 
 /**
+ * Sage Wikiの全summary再抽出を実行し、runtime statusへ結果を反映する。
+ * @param projectRoot Sage Wiki project root。
+ * @param status 更新するForce re-extract runtime status。
+ * @returns 再抽出processが正常終了したときにresolveするPromise。
+ * @throws Sage Wiki processの起動または再抽出に失敗した場合。
+ * @sideeffect concept記事、ontology relation、manifestおよびDBを更新する。
+ */
+async function runTrackedForceReextract(
+  projectRoot: string,
+  status: ForceReextractRuntimeStatus,
+): Promise<void> {
+  const started = Date.now();
+  status.state = 'running';
+  status.startedAt = new Date(started).toISOString();
+  delete status.completedAt;
+  delete status.durationMs;
+  delete status.lastError;
+  try {
+    await runSageWikiReextract(projectRoot);
+    status.state = 'success';
+  } catch (error) {
+    status.state = 'error';
+    status.lastError = errorMessage(error);
+    throw error;
+  } finally {
+    status.completedAt = new Date().toISOString();
+    status.durationMs = Date.now() - started;
+  }
+}
+
+/**
+ * 同梱したSage Wiki CLIで既存summaryの再抽出を開始する。
+ * @param projectRoot Sage Wiki project root。
+ * @returns child processがexit code 0で終了したときにresolveするPromise。
+ * @throws child processを起動できない、または非0で終了した場合。
+ * @sideeffect Sage Wiki CLIを子processとして起動し、出力をIngester logへ接続する。
+ */
+async function runSageWikiReextract(projectRoot: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    let stderr = '';
+    const child = spawn(
+      '/usr/local/bin/sage-wiki',
+      ['compile', '--re-extract', '--project', projectRoot],
+      {cwd: projectRoot, env: process.env, stdio: ['ignore', 'inherit', 'pipe']},
+    );
+    child.stderr.on('data', (chunk: Buffer) => {
+      process.stderr.write(chunk);
+      stderr = `${stderr}${chunk.toString('utf8')}`.slice(-8192);
+    });
+    child.once('error', reject);
+    child.once('close', (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const detail = stderr.trim().split('\n').at(-1);
+      reject(new Error(`sage-wiki compile --re-extractが失敗しました: exit=${String(code)}, signal=${signal ?? 'none'}${detail ? `, ${detail}` : ''}`));
+    });
+  });
+}
+
+/**
  * source adapterを選択して1回同期する。
  * @param projectRoot Sage Wiki project root。
  * @param source 同期対象sourceの設定。
@@ -307,6 +396,9 @@ function createRuntimeStatus(config: IngesterConfig): IngesterRuntimeStatus {
     ready: false,
     projectRoot: config.projectRoot,
     timezone: config.timezone,
+    forceReextract: {
+      state: 'idle',
+    },
     sources: config.sources.map((source) => ({
       id: source.id,
       adapter: source.adapter,

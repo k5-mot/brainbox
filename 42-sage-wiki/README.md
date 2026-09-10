@@ -2,7 +2,7 @@
 
 Sage Wiki `v0.2.10`を、LLMによる知識コンパイル、検索、知識graph、Web UI、REST APIおよびMCP serverに使用する。`sage-wiki-ingester`が設定されたsourceを起動時とcronで同期し、状態確認用Web UIを公開する。`sage-wiki`の内蔵workerはsource変更を検知してcompileし、生成結果のWeb UI、APIおよびMCPを公開する。両serviceは`sage-wiki-project` named volumeを共有する。
 
-LLM処理は既存のLiteLLMへOpenAI互換APIで接続する。生成modelには`openai/gpt-oss:20b`、embedding modelには`Qwen/Qwen3-Embedding:0.6B`を使用する。credentialの値はrepositoryへ保存せず、`LITELLM_MASTER_KEY`環境変数から取得する。
+LLM処理は既存のLiteLLMへOpenAI互換APIで接続する。通常の要約には`openai/gpt-oss:20b`、concept抽出、relation抽出および記事生成には`google/gemma4:31b`、embeddingには`Qwen/Qwen3-Embedding:0.6B`を使用する。credentialの値はrepositoryへ保存せず、`LITELLM_MASTER_KEY`環境変数から取得する。
 
 この文書の`docker compose` commandは、`42-sage-wiki/`ではなくrepository rootで実行しなければならない（MUST）。Sage WikiはrootのComposeがincludeするCouchDB、LiteLLMおよびembedding serviceへ依存する。
 
@@ -89,7 +89,7 @@ curl --fail-with-body --request POST \
 
 ## Ingester status
 
-`http://${PUBLIC_HOST}:34201/`でIngesterの稼働状態、sourceごとのschedule、manual triggerを含む実行中または最終同期の結果とerrorを確認できる。各sourceの`Run now`を押すと、常駐processのqueueを使って即時同期する。初回は`SAGE_WIKI_TOKEN`を入力し、tokenは同じbrowser tabを閉じるまで保持される。画面は10秒ごとに自動更新する。機械可読な同じ状態は`/api/status`で公開する。
+`http://${PUBLIC_HOST}:34201/`でIngesterの稼働状態、sourceごとのschedule、manual triggerを含む実行中または最終同期の結果とerrorを確認できる。各sourceの`Run now`を押すと、常駐processのqueueを使って即時同期する。`Force re-extract`はsource同期とは別の操作として表示する。初回は`SAGE_WIKI_TOKEN`を入力し、tokenは同じbrowser tabを閉じるまで保持される。画面は10秒ごとに自動更新する。機械可読な同じ状態は`/api/status`で公開する。
 
 ```bash
 # Ingester status APIを確認する。
@@ -104,6 +104,46 @@ curl --fail "http://${PUBLIC_HOST}:34201/api/status"
 失敗基準:
 
 - HTTP statusが200以外、またはsourceの最終同期状態が`error`になる。
+
+## Concept graphのForce re-extract
+
+全体Graphに意味のあるconcept間edgeが不足している場合は、Ingester Web UIの`Force re-extract`を使用する。この操作はsource別の`Run now`とは異なり、既存の全summaryに対して`sage-wiki compile --re-extract`を実行し、concept抽出、LLMによるrelation抽出および記事生成をやり直す。
+
+[config.yaml](https://github.com/k5-mot/inferlab/blob/main/42-sage-wiki/config.yaml)では、JSON出力の途中切れを避けるため`extract_batch_size: 1`、concept抽出とtriple抽出の上限を`16384` token、記事生成の上限を`8192` tokenに設定する。再抽出はsummaryごとのLLM呼出しを伴い、長時間動作する。実行中もIngester Web UIと`/api/status`で`queued`、`running`、`success`または`error`を確認できる。同じ直列queueを使うため、source同期と再抽出は同時に共有projectを書き換えない。
+
+```bash
+# `.env`の設定値を現在のshellへexportする。
+set -a
+source .env
+set +a
+
+# 常駐Ingesterへ全summaryの再抽出を要求する。
+curl --fail-with-body --request POST \
+  --header "Authorization: Bearer ${SAGE_WIKI_TOKEN}" \
+  "http://${PUBLIC_HOST}:34201/api/force-reextract"
+
+# Force re-extractの進行状態を確認する。
+curl --fail "http://${PUBLIC_HOST}:34201/api/status"
+
+# concept間edgeを含む全体Graph APIを確認する。
+curl --fail \
+  --header "Authorization: Bearer ${SAGE_WIKI_TOKEN}" \
+  "http://${PUBLIC_HOST}:34200/api/graph"
+```
+
+正常に受け付けた場合はHTTP `202 Accepted`と`{"job":"force-reextract","state":"queued"}`を返す。`queued`または`running`の間に重ねて要求した場合はHTTP `409 Conflict`を返す。
+
+期待結果:
+
+- Ingester statusの`forceReextract.state`が`queued`、`running`、`success`の順に遷移する。
+- 完了後の`/api/graph`にconcept node同士を結ぶedgeが1件以上含まれる。
+- `http://${PUBLIC_HOST}:34200/?token=${SAGE_WIKI_TOKEN}`の全体Graphにnodeとedgeが表示される。
+
+失敗基準:
+
+- `forceReextract.state`が`error`になり、`lastError`へSage Wiki CLIの終了errorが表示される。
+- LiteLLMのmodel解決、token上限、provider timeoutまたはstructured JSON生成に失敗する。
+- 完了後もconcept間edgeが0件の場合は、IngesterとLiteLLMのlogでtriple extractionのerrorを確認する。
 
 ## 起動
 

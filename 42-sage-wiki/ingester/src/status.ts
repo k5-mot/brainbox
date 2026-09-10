@@ -19,21 +19,34 @@ export interface SourceRuntimeStatus {
   lastError?: string;
 }
 
+export interface ForceReextractRuntimeStatus {
+  state: SourceRunState;
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
+  lastError?: string;
+}
+
 export interface IngesterRuntimeStatus {
   startedAt: string;
   ready: boolean;
   projectRoot: string;
   timezone: string;
+  forceReextract: ForceReextractRuntimeStatus;
   sources: SourceRuntimeStatus[];
 }
 
 type StatusProvider = () => IngesterRuntimeStatus;
 type SourceTrigger = (sourceId: string) => TriggerResult;
+type ForceTrigger = () => TriggerResult;
 
 const STATUS_SCRIPT = String.raw`const TOKEN_STORAGE_KEY = 'sage-wiki-ingester-token';
 
 for (const button of document.querySelectorAll('[data-trigger-source]')) {
   button.addEventListener('click', triggerSource);
+}
+for (const button of document.querySelectorAll('[data-trigger-force-reextract]')) {
+  button.addEventListener('click', triggerForceReextract);
 }
 
 /**
@@ -47,6 +60,30 @@ async function triggerSource(event) {
   const sourceId = button.dataset.triggerSource;
   if (!sourceId) return;
 
+  await requestTrigger(button, '/api/sources/' + encodeURIComponent(sourceId) + '/ingest', 'Run now');
+}
+
+/**
+ * 全summaryのconcept・relation再抽出を常駐Ingesterのqueueへ登録する。
+ * @param {MouseEvent} event Force Triggerのclick event。
+ * @returns {Promise<void>} API requestと画面更新の完了時にresolveするPromise。
+ */
+async function triggerForceReextract(event) {
+  const button = event.currentTarget;
+  if (!(button instanceof HTMLButtonElement)) return;
+
+  await requestTrigger(button, '/api/force-reextract', 'Force re-extract');
+}
+
+/**
+ * 認証tokenを付けてtrigger APIを呼び、button状態を同期する。
+ * @param {HTMLButtonElement} button 操作中状態を表示するbutton。
+ * @param {string} endpoint POSTする同一originのAPI path。
+ * @param {string} idleLabel 失敗時に復元するbutton label。
+ * @returns {Promise<void>} API requestと画面更新の完了時にresolveするPromise。
+ */
+async function requestTrigger(button, endpoint, idleLabel) {
+
   let token = sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? '';
   if (!token) {
     token = window.prompt('SAGE_WIKI_TOKENを入力してください')?.trim() ?? '';
@@ -57,7 +94,7 @@ async function triggerSource(event) {
   button.disabled = true;
   button.textContent = 'Queuing...';
   try {
-    const response = await fetch('/api/sources/' + encodeURIComponent(sourceId) + '/ingest', {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {authorization: 'Bearer ' + token},
     });
@@ -66,7 +103,7 @@ async function triggerSource(event) {
     window.location.reload();
   } catch (error) {
     button.disabled = false;
-    button.textContent = 'Run now';
+    button.textContent = idleLabel;
     window.alert(error instanceof Error ? error.message : String(error));
   }
 }`;
@@ -76,6 +113,7 @@ async function triggerSource(event) {
  * @param port listenするTCP port。0を指定すると空きportを自動選択する。
  * @param getStatus request時点のIngester状態を返す関数。
  * @param triggerSource 指定sourceを常駐processのqueueへ登録する関数。
+ * @param triggerForceReextract 全summaryの再抽出を常駐processのqueueへ登録する関数。
  * @param token manual triggerのBearer認証に使用するtoken。
  * @returns listen済みのHTTP server。
  * @throws TCP portをlistenできない場合。
@@ -85,12 +123,26 @@ export async function startStatusServer(
   port: number,
   getStatus: StatusProvider,
   triggerSource: SourceTrigger,
+  triggerForceReextract: ForceTrigger,
   token: string,
 ): Promise<Server> {
   const server = createServer((request, response) => {
     const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
     if (request.method === 'GET' && pathname === '/health') {
       send(response, 200, 'text/plain; charset=utf-8', 'ok\n');
+      return;
+    }
+    if (request.method === 'POST' && pathname === '/api/force-reextract') {
+      if (!isAuthorized(request.headers.authorization, token)) {
+        send(response, 401, 'text/plain; charset=utf-8', 'Unauthorized\n');
+        return;
+      }
+      const result = triggerForceReextract();
+      if (result === 'accepted') {
+        send(response, 202, 'application/json; charset=utf-8', `${JSON.stringify({job: 'force-reextract', state: 'queued'})}\n`);
+        return;
+      }
+      send(response, 409, 'text/plain; charset=utf-8', 'Force Re-extract Busy\n');
       return;
     }
     if (request.method === 'GET' && pathname === '/api/status') {
@@ -189,6 +241,7 @@ function send(
 function renderStatusPage(status: IngesterRuntimeStatus): string {
   let rows = '';
   for (const source of status.sources) rows += renderSourceRow(source, status.ready);
+  const force = renderForceReextract(status.forceReextract, status.ready);
   return `<!doctype html>
 <html lang="ja">
 <head>
@@ -205,6 +258,8 @@ function renderStatusPage(status: IngesterRuntimeStatus): string {
     button{padding:7px 12px;border:1px solid #60a5fa;border-radius:6px;background:#1d4ed8;color:#fff;cursor:pointer}
     button:disabled{border-color:#475569;background:#334155;color:#94a3b8;cursor:not-allowed}
     code{font-family:ui-monospace,monospace}footer{margin-top:16px;font-size:13px;color:#64748b}
+    .force{margin-top:24px;padding:18px;background:#172033;border:1px solid #334155;border-radius:8px}
+    .force h2{margin:0 0 8px;font-size:18px}.force p{margin:8px 0}
   </style>
 </head>
 <body>
@@ -215,10 +270,37 @@ function renderStatusPage(status: IngesterRuntimeStatus): string {
     <thead><tr><th>Source</th><th>Status</th><th>Schedule</th><th>Last result</th><th>Manual trigger</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
+  ${force}
   <footer>10秒ごとに自動更新 · JSON: <code>/api/status</code></footer>
   <script src="/status.js"></script>
 </body>
 </html>`;
+}
+
+/**
+ * 全summary再抽出の状態と専用buttonをHTMLへ変換する。
+ * @param force 表示するForce re-extract状態。
+ * @param ready Ingesterがtriggerを受け付けられる場合はtrue。
+ * @returns escape済みのHTML section。
+ */
+function renderForceReextract(force: ForceReextractRuntimeStatus, ready: boolean): string {
+  const stateClass = force.state === 'error'
+    ? 'error'
+    : force.state === 'running' || force.state === 'queued'
+      ? force.state
+      : 'ok';
+  const disabled = !ready || force.state === 'queued' || force.state === 'running';
+  const completed = force.completedAt
+    ? ` · Completed: ${escapeHtml(force.completedAt)}${force.durationMs === undefined ? '' : ` · ${Math.round(force.durationMs / 1000)}s`}`
+    : '';
+  const error = force.lastError ? `<p class="error">${escapeHtml(force.lastError)}</p>` : '';
+  return `<section class="force">
+    <h2>Concept graph force extraction</h2>
+    <p>既存summaryを小batch・高token上限で再処理し、concept間relationと記事を再生成します。</p>
+    <p>Status: <strong class="${stateClass}">${escapeHtml(force.state)}</strong><span class="muted">${completed}</span></p>
+    ${error}
+    <button type="button" data-trigger-force-reextract${disabled ? ' disabled' : ''}>Force re-extract</button>
+  </section>`;
 }
 
 /**
